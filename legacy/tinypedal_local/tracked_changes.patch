@@ -1,0 +1,100 @@
+diff --git a/requirements.txt b/requirements.txt
+index 1c9a8e5501c5dfa2c3fc9bb1d9d67477c07e1e75..73ab2a1461b66955629bd56770820b853525eba6 100644
+GIT binary patch
+literal 31
+mcmXRYE-lH-v9&eRGt@KW3aAXuOi4AewKdf<G}SZGGXwydfC!ub
+
+literal 66
+zcmezWuYjSLp_HM7A(J78!4?S381xtn!I+nUiy?rak|7u<m%@<BU<8&o1<Qd*BQOg9
+D!CMNZ
+
+diff --git a/tinypedal/calculation.py b/tinypedal/calculation.py
+index 6b0a757..8a6a8ff 100644
+--- a/tinypedal/calculation.py
++++ b/tinypedal/calculation.py
+@@ -803,3 +803,10 @@ def differential_locking_percent(rot_axle: float, rot_left: float) -> float:
+     if rot_axle:
+         return 1 - abs(rot_left / rot_axle - 1)
+     return 0
++
++def session_best_laptime(data_list: list, column: int, laptime: int = 99999):
++    """Find session best lap time from data list"""
++    for data in data_list:
++        if 0 < data[column] < laptime:
++            laptime = data[column]
++    return laptime
+\ No newline at end of file
+diff --git a/tinypedal/module/__init__.py b/tinypedal/module/__init__.py
+index 9192cf5..4723552 100644
+--- a/tinypedal/module/__init__.py
++++ b/tinypedal/module/__init__.py
+@@ -25,6 +25,8 @@ in template/setting_module.py dictionary.
+ """
+ 
+ __all__ = [
++    "module_agent",
++    "module_logging",
+     "module_delta",
+     "module_energy",
+     "module_force",
+diff --git a/tinypedal/template/setting_module.py b/tinypedal/template/setting_module.py
+index 881e80c..f60930d 100644
+--- a/tinypedal/template/setting_module.py
++++ b/tinypedal/template/setting_module.py
+@@ -22,6 +22,56 @@ Default module setting template
+ 
+ 
+ MODULE_DEFAULT = {
++    "module_agent": {
++        "enable": True,  # Start disabled by default for safety
++        "update_interval": 100,
++        "idle_update_interval": 400,
++        # Add any specific configuration options needed for the agent
++        "voice_id": "pNInz6obpgDQGcFmaJgB",  # Default voice ID
++        "output_format": "mp3_22050_32",
++        "model_id": "eleven_multilingual_v2",
++    },
++    "module_logging": {
++        "enable": True,
++        "update_interval": 0.1,
++        "idle_update_interval": 1.0,
++        "log_format": "csv",
++        "log_directory": "logs/telemetry",
++        "compress_logs": True,
++        "auto_start_logging": True,
++        
++        "log_high_freq_interval": 0.001,
++        "log_static_interval": 60.0,
++        "log_vehicles_interval": 0.5,
++        "include_vehicle_count": 32,
++        
++        "memory_mode": "complete",
++        "max_memory_usage_mb": 2000,
++        "flush_threshold_entries": 1000,
++        "flush_interval": 5.0,
++        
++        "fields_to_log": {
++        "high_frequency": {
++            "inputs": True,
++            "wheels": True,
++            "force": True,
++            "vehicle_physics": True,
++            "engine": True
++        },
++        "static_data": {
++            "track": True,
++            "vehicle": True,
++            "session": True,
++            "weather": True
++        },
++        "vehicles_data": {
++            "positions": True,
++            "laptimes": True,
++            "distances": True,
++            "status": True
++        }
++        }
++    },
+     "module_delta": {
+         "enable": True,
+         "update_interval": 10,

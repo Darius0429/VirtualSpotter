@@ -13,20 +13,34 @@ authors = [
 keywords = ["machine learning", "MLOps"]
 classifiers = [
   "Development Status :: 3 - Alpha",
-  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.12",
+  "Operating System :: Microsoft :: Windows",
 ]
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12,<3.13"
 dynamic = ["dependencies", "optional-dependencies"]
 
 [tool.setuptools.dynamic]
 dependencies = {file = ["requirements.txt"]}
 
 [tool.setuptools.dynamic.optional-dependencies]
-dev = {file = ['requirements_dev.txt']}
+dev = {file = ["requirements_dev.txt"]}
+
+[tool.setuptools.packages.find]
+where = ["src", "thirdparty"]
+include = ["ai_race_engineer*", "pyLMUSharedMemory*", "pyRfactor2SharedMemory*"]
 
 [tool.ruff]
 line-length = 120
+target-version = "py312"
+extend-exclude = ["thirdparty", "legacy", "notebooks"]
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "UP", "B", "ANN"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src", "thirdparty"]
 
 [tool.coverage.run]
 omit = ["tests/*"]

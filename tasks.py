@@ -4,7 +4,7 @@ from invoke import Context, task
 
 WINDOWS = os.name == "nt"
 PROJECT_NAME = "ai_race_engineer"
-PYTHON_VERSION = "3.11"
+PYTHON_VERSION = "3.12"
 
 # Setup commands
 @task

@@ -1,5 +1,5 @@
 # Change from latest to a specific version if your requirements.txt
-FROM python:3.11-slim AS base
+FROM python:3.12-slim AS base
 
 RUN apt update && \
     apt install --no-install-recommends -y build-essential gcc && \
