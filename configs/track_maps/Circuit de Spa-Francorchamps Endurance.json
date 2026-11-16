@@ -1,0 +1,170 @@
+[
+ {
+  "name": "straight 1",
+  "corner": false,
+  "start_m": 0.0,
+  "end_m": 55.0,
+  "apex_m": null
+ },
+ {
+  "name": "turn 1",
+  "corner": true,
+  "start_m": 55.0,
+  "end_m": 380.0,
+  "apex_m": 265.0
+ },
+ {
+  "name": "straight 2",
+  "corner": false,
+  "start_m": 380.0,
+  "end_m": 705.0,
+  "apex_m": null
+ },
+ {
+  "name": "turn 2 to 4",
+  "corner": true,
+  "start_m": 705.0,
+  "end_m": 1270.0,
+  "apex_m": 990.0
+ },
+ {
+  "name": "straight 3",
+  "corner": false,
+  "start_m": 1270.0,
+  "end_m": 2085.0,
+  "apex_m": null
+ },
+ {
+  "name": "turn 5",
+  "corner": true,
+  "start_m": 2085.0,
+  "end_m": 2350.0,
+  "apex_m": 2310.0
+ },
+ {
+  "name": "turn 6",
+  "corner": true,
+  "start_m": 2350.0,
+  "end_m": 2455.0,
+  "apex_m": 2370.0
+ },
+ {
+  "name": "turn 7",
+  "corner": true,
+  "start_m": 2455.0,
+  "end_m": 2645.0,
+  "apex_m": 2515.0
+ },
+ {
+  "name": "straight 4",
+  "corner": false,
+  "start_m": 2645.0,
+  "end_m": 2675.0,
+  "apex_m": null
+ },
+ {
+  "name": "turn 8",
+  "corner": true,
+  "start_m": 2675.0,
+  "end_m": 3070.0,
+  "apex_m": 2930.0
+ },
+ {
+  "name": "turn 9",
+  "corner": true,
+  "start_m": 3070.0,
+  "end_m": 3290.0,
+  "apex_m": 3165.0
+ },
+ {
+  "name": "straight 5",
+  "corner": false,
+  "start_m": 3290.0,
+  "end_m": 3460.0,
+  "apex_m": null
+ },
+ {
+  "name": "turn 10 and 11",
+  "corner": true,
+  "start_m": 3460.0,
+  "end_m": 4080.0,
+  "apex_m": 3715.0
+ },
+ {
+  "name": "straight 6",
+  "corner": false,
+  "start_m": 4080.0,
+  "end_m": 4145.0,
+  "apex_m": null
+ },
+ {
+  "name": "turn 12",
+  "corner": true,
+  "start_m": 4145.0,
+  "end_m": 4475.0,
+  "apex_m": 4415.0
+ },
+ {
+  "name": "turn 13",
+  "corner": true,
+  "start_m": 4475.0,
+  "end_m": 4685.0,
+  "apex_m": 4495.0
+ },
+ {
+  "name": "turn 14",
+  "corner": true,
+  "start_m": 4685.0,
+  "end_m": 4950.0,
+  "apex_m": 4830.0
+ },
+ {
+  "name": "turn 15",
+  "corner": true,
+  "start_m": 4950.0,
+  "end_m": 5300.0,
+  "apex_m": 5010.0
+ },
+ {
+  "name": "straight 7",
+  "corner": false,
+  "start_m": 5300.0,
+  "end_m": 5840.0,
+  "apex_m": null
+ },
+ {
+  "name": "turn 16 and 17",
+  "corner": true,
+  "start_m": 5840.0,
+  "end_m": 6190.0,
+  "apex_m": 6045.0
+ },
+ {
+  "name": "straight 8",
+  "corner": false,
+  "start_m": 6190.0,
+  "end_m": 6420.0,
+  "apex_m": null
+ },
+ {
+  "name": "turn 18",
+  "corner": true,
+  "start_m": 6420.0,
+  "end_m": 6650.0,
+  "apex_m": 6620.0
+ },
+ {
+  "name": "turn 19",
+  "corner": true,
+  "start_m": 6650.0,
+  "end_m": 6785.0,
+  "apex_m": 6670.0
+ },
+ {
+  "name": "straight 9",
+  "corner": false,
+  "start_m": 6785.0,
+  "end_m": 6981.6,
+  "apex_m": null
+ }
+]

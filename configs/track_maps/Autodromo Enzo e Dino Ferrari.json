@@ -1,0 +1,135 @@
+[
+ {
+  "name": "straight 1",
+  "corner": false,
+  "start_m": 0.0,
+  "end_m": 485.0,
+  "apex_m": null
+ },
+ {
+  "name": "turn 2",
+  "corner": true,
+  "start_m": 485.0,
+  "end_m": 740.0,
+  "apex_m": 700.0
+ },
+ {
+  "name": "turn 3",
+  "corner": true,
+  "start_m": 740.0,
+  "end_m": 840.0,
+  "apex_m": 765.0
+ },
+ {
+  "name": "turn 4",
+  "corner": true,
+  "start_m": 840.0,
+  "end_m": 1025.0,
+  "apex_m": 865.0
+ },
+ {
+  "name": "straight 2",
+  "corner": false,
+  "start_m": 1025.0,
+  "end_m": 1110.0,
+  "apex_m": null
+ },
+ {
+  "name": "turn 5",
+  "corner": true,
+  "start_m": 1110.0,
+  "end_m": 1375.0,
+  "apex_m": 1320.0
+ },
+ {
+  "name": "turn 6",
+  "corner": true,
+  "start_m": 1375.0,
+  "end_m": 1530.0,
+  "apex_m": 1420.0
+ },
+ {
+  "name": "turn 7",
+  "corner": true,
+  "start_m": 1530.0,
+  "end_m": 1860.0,
+  "apex_m": 1710.0
+ },
+ {
+  "name": "straight 3",
+  "corner": false,
+  "start_m": 1860.0,
+  "end_m": 2110.0,
+  "apex_m": null
+ },
+ {
+  "name": "turn 9",
+  "corner": true,
+  "start_m": 2110.0,
+  "end_m": 2600.0,
+  "apex_m": 2320.0
+ },
+ {
+  "name": "turn 11 and 12",
+  "corner": true,
+  "start_m": 2600.0,
+  "end_m": 2910.0,
+  "apex_m": 2845.0
+ },
+ {
+  "name": "turn 13",
+  "corner": true,
+  "start_m": 2910.0,
+  "end_m": 3020.0,
+  "apex_m": 2945.0
+ },
+ {
+  "name": "straight 4",
+  "corner": false,
+  "start_m": 3020.0,
+  "end_m": 3145.0,
+  "apex_m": null
+ },
+ {
+  "name": "turn 14",
+  "corner": true,
+  "start_m": 3145.0,
+  "end_m": 3365.0,
+  "apex_m": 3340.0
+ },
+ {
+  "name": "turn 15",
+  "corner": true,
+  "start_m": 3365.0,
+  "end_m": 3485.0,
+  "apex_m": 3385.0
+ },
+ {
+  "name": "straight 5",
+  "corner": false,
+  "start_m": 3485.0,
+  "end_m": 3930.0,
+  "apex_m": null
+ },
+ {
+  "name": "turn 17",
+  "corner": true,
+  "start_m": 3930.0,
+  "end_m": 4190.0,
+  "apex_m": 4130.0
+ },
+ {
+  "name": "turn 18",
+  "corner": true,
+  "start_m": 4190.0,
+  "end_m": 4390.0,
+  "apex_m": 4250.0
+ },
+ {
+  "name": "straight 6",
+  "corner": false,
+  "start_m": 4390.0,
+  "end_m": 4900.7,
+  "apex_m": null
+ }
+]

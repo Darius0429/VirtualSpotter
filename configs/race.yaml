@@ -1,0 +1,52 @@
+pace_window_laps: 8
+projection_period_s: 1.0     # session seconds between recomputations
+traffic_horizon_laps: 3.0    # other-class cars the player meets within this many laps are reported
+fuel_margin_laps: 0.2        # laps the fuel may be short of the energy before 'fuel runs out first'
+strategy_start_laps: 5       # laps the player completes before measured pace and usage replace the pre-race
+                             # figures and before rival callouts start
+pit:
+  rates:                     # defaults until calibrated in the session
+    fuel_rate_l_per_s: 3.0   # Bahrain stop: about 30 L against the game's 10.1 s
+    energy_rate_per_s: 0.025 # fraction/s = 0.4 s per 1 %; fit of 649 game estimates: 1.0 s + 0.400 s per 1 %
+    scale: 1.0               # game estimate 22.9 s against 22.6 s measured stationary (Bahrain)
+    base_s: 1.0              # fixed s per stop that adds energy or fuel (fit: 1.0 s + 0.400 s per 1 %)
+  default_lane:              # used only for a track missing from tracks.yaml with no pass measured yet
+    time_s: 31.0
+    length_m: 470.0
+  stop_speed_mps: 0.5        # below this in the pits a car counts as stationary
+  traffic_window_s: 3.0      # cars within this of the rejoin point count as traffic
+pit_estimate:
+  url: http://127.0.0.1:6397/rest/strategy/pitstop-estimate
+  period_s: 5.0
+  timeout_s: 1.0
+rivals:
+  pace_window_s: 0.3
+  finish_window_s: 15.0      # projected gap at the flag within which a car becomes a strategy rival
+  finish_window_exit_s: 20.0 # projected gap beyond which it stops being one
+  min_rival_s: 60.0          # session seconds a strategy rival stays one (and is not announced again) whatever its gap
+rival_watch:
+  pace_change_s: 0.3
+  low_laps: 2.0
+  announce_groups: [ahead, behind, strategy]
+flags:
+  sector_yellow_value: 1     # mSectorFlag value that means yellow
+  sector_of_index: [1, 2, 3] # sector number of mSectorFlag[0], [1], [2]
+  clear_hold_s: 3.0          # a sector must stay clear this long before 'Sector n clear'
+priors:
+  pace_factor: 1.0           # race pace = factor * a qualifying or best lap
+  history_sessions: 5        # sessions per track and car the history figures are the median of
+  max_qualifying_age_h: 6.0  # a qualifying results file older than this is not this event's
+garage:
+  url: http://127.0.0.1:6397/rest/garage/getPlayerGarageData
+  period_s: 5.0              # read once at start, then only while the player is in the pits or garage
+  timeout_s: 1.0
+grid_briefing:
+  max_cars: 3                # cars named in the spoken briefing
+  standing_speed_mps: 5.0    # below this the driver is standing on the grid
+  min_energy_delta: 0.005    # fraction; energy differences below this are not mentioned
+  max_wait_s: 20.0           # session seconds the briefing waits for the qualifying times and the player's energy
+                             # figure before it is given without them
+saving:
+  max_saving_fraction: 0.05  # share of the usage per lap that is realistic to save
+  min_laps: 5                # clean laps needed before a cost is estimated
+  min_spread: 0.01           # the lowest lap must use this share less than the mean before a cost is estimated

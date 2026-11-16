@@ -1,0 +1,10 @@
+low_fuel_laps: 2.0
+low_energy_laps: 2.0
+enabled:                     # SessionType names
+  fastest_lap: [PRACTICE, QUALIFY, RACE]
+  sector_comparison: [PRACTICE, QUALIFY]
+  low_fuel: [PRACTICE, RACE]
+  spotter: []                # off for now; was [PRACTICE, QUALIFY, WARMUP, RACE]
+  rival_watch: []            # off: rivals are tracked and stored, not announced; was [RACE]
+  flags: []                  # off; was [PRACTICE, QUALIFY, WARMUP, RACE]
+  grid_briefing: [RACE]

@@ -1,0 +1,170 @@
+[
+ {
+  "name": "straight 1",
+  "corner": false,
+  "start_m": 0.0,
+  "end_m": 385.0,
+  "apex_m": null
+ },
+ {
+  "name": "Dunlop Curve",
+  "corner": true,
+  "start_m": 385.0,
+  "end_m": 760.0,
+  "apex_m": 660.0
+ },
+ {
+  "name": "Dunlop Chicane",
+  "corner": true,
+  "start_m": 760.0,
+  "end_m": 1025.0,
+  "apex_m": 845.0
+ },
+ {
+  "name": "the Esses",
+  "corner": true,
+  "start_m": 1025.0,
+  "end_m": 1795.0,
+  "apex_m": 1490.0
+ },
+ {
+  "name": "Tertre Rouge",
+  "corner": true,
+  "start_m": 1795.0,
+  "end_m": 2080.0,
+  "apex_m": 1910.0
+ },
+ {
+  "name": "straight 2",
+  "corner": false,
+  "start_m": 2080.0,
+  "end_m": 3840.0,
+  "apex_m": null
+ },
+ {
+  "name": "first Mulsanne chicane",
+  "corner": true,
+  "start_m": 3840.0,
+  "end_m": 4350.0,
+  "apex_m": 4125.0
+ },
+ {
+  "name": "straight 3",
+  "corner": false,
+  "start_m": 4350.0,
+  "end_m": 5805.0,
+  "apex_m": null
+ },
+ {
+  "name": "second Mulsanne chicane",
+  "corner": true,
+  "start_m": 5805.0,
+  "end_m": 6340.0,
+  "apex_m": 6085.0
+ },
+ {
+  "name": "straight 4",
+  "corner": false,
+  "start_m": 6340.0,
+  "end_m": 7535.0,
+  "apex_m": null
+ },
+ {
+  "name": "Mulsanne Corner",
+  "corner": true,
+  "start_m": 7535.0,
+  "end_m": 7845.0,
+  "apex_m": 7750.0
+ },
+ {
+  "name": "straight 5",
+  "corner": false,
+  "start_m": 7845.0,
+  "end_m": 9435.0,
+  "apex_m": null
+ },
+ {
+  "name": "Indianapolis",
+  "corner": true,
+  "start_m": 9435.0,
+  "end_m": 9970.0,
+  "apex_m": 9850.0
+ },
+ {
+  "name": "straight 6",
+  "corner": false,
+  "start_m": 9970.0,
+  "end_m": 9975.0,
+  "apex_m": null
+ },
+ {
+  "name": "Arnage",
+  "corner": true,
+  "start_m": 9975.0,
+  "end_m": 10275.0,
+  "apex_m": 10170.0
+ },
+ {
+  "name": "straight 7",
+  "corner": false,
+  "start_m": 10275.0,
+  "end_m": 11250.0,
+  "apex_m": null
+ },
+ {
+  "name": "Porsche Curves 1",
+  "corner": true,
+  "start_m": 11250.0,
+  "end_m": 11710.0,
+  "apex_m": 11535.0
+ },
+ {
+  "name": "Porsche Curves 2",
+  "corner": true,
+  "start_m": 11710.0,
+  "end_m": 12080.0,
+  "apex_m": 11765.0
+ },
+ {
+  "name": "Porsche Curves 3",
+  "corner": true,
+  "start_m": 12080.0,
+  "end_m": 12365.0,
+  "apex_m": 12255.0
+ },
+ {
+  "name": "Porsche Curves 4",
+  "corner": true,
+  "start_m": 12365.0,
+  "end_m": 12590.0,
+  "apex_m": 12400.0
+ },
+ {
+  "name": "straight 8",
+  "corner": false,
+  "start_m": 12590.0,
+  "end_m": 13060.0,
+  "apex_m": null
+ },
+ {
+  "name": "first Ford chicane",
+  "corner": true,
+  "start_m": 13060.0,
+  "end_m": 13375.0,
+  "apex_m": 13330.0
+ },
+ {
+  "name": "second Ford chicane",
+  "corner": true,
+  "start_m": 13375.0,
+  "end_m": 13555.0,
+  "apex_m": 13405.0
+ },
+ {
+  "name": "straight 9",
+  "corner": false,
+  "start_m": 13555.0,
+  "end_m": 13624.0,
+  "apex_m": null
+ }
+]

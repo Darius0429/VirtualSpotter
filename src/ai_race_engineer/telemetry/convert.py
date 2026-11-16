@@ -4,13 +4,15 @@ from collections.abc import Sequence
 from pyLMUSharedMemory.lmu_data import LMUScoringInfo, LMUVect3, LMUVehicleScoring, LMUVehicleTelemetry, LMUWheel
 from pyRfactor2SharedMemory.rf2_data import rF2ScoringInfo, rF2Vec3, rF2VehicleScoring, rF2VehicleTelemetry, rF2Wheel
 
-from ai_race_engineer.telemetry.snapshot import PlayerState, SessionState, SessionType, VehicleState
+from ai_race_engineer.telemetry.snapshot import PlayerState, SessionState, SessionType, VehicleState, WheelState
 
 type ScoringInfo = LMUScoringInfo | rF2ScoringInfo
 type VehicleScoring = LMUVehicleScoring | rF2VehicleScoring
 type VehicleTelemetry = LMUVehicleTelemetry | rF2VehicleTelemetry
 type Vect3 = LMUVect3 | rF2Vec3
 type Wheel = LMUWheel | rF2Wheel
+
+KELVIN: float = 273.15
 
 
 def session_state(info: ScoringInfo) -> SessionState:
@@ -98,6 +100,27 @@ def player_state(
             _tyre_temp_c(telem.mWheels[2]),
             _tyre_temp_c(telem.mWheels[3]),
         ),
+        wheels=tuple(_wheel_state(telem.mWheels[index]) for index in range(4)),
+    )
+
+
+def _wheel_state(wheel: Wheel) -> WheelState:
+    """Wheel state from one wheel of the telemetry struct.
+    In:  wheel  LMUWheel | rF2Wheel  mRotation in rad/s (negative forward), mStaticUndeflectedRadius in cm,
+                                     temperatures in K, mPressure in kPa
+    Out:        WheelState
+    """
+    return WheelState(
+        speed_mps=-wheel.mRotation * wheel.mStaticUndeflectedRadius / 100,
+        grip_fraction=wheel.mGripFract,
+        surface_temp_c=(
+            wheel.mTemperature[0] - KELVIN,
+            wheel.mTemperature[1] - KELVIN,
+            wheel.mTemperature[2] - KELVIN,
+        ),
+        carcass_temp_c=wheel.mTireCarcassTemperature - KELVIN,
+        pressure_kpa=wheel.mPressure,
+        brake_temp_c=wheel.mBrakeTemp - KELVIN,
     )
 
 

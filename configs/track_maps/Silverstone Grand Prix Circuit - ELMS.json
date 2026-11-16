@@ -1,0 +1,135 @@
+[
+ {
+  "name": "straight 1",
+  "corner": false,
+  "start_m": 0.0,
+  "end_m": 135.0,
+  "apex_m": null
+ },
+ {
+  "name": "Copse",
+  "corner": true,
+  "start_m": 135.0,
+  "end_m": 560.0,
+  "apex_m": 380.0
+ },
+ {
+  "name": "straight 2",
+  "corner": false,
+  "start_m": 560.0,
+  "end_m": 805.0,
+  "apex_m": null
+ },
+ {
+  "name": "Maggotts and Becketts",
+  "corner": true,
+  "start_m": 805.0,
+  "end_m": 1440.0,
+  "apex_m": 1320.0
+ },
+ {
+  "name": "Chapel",
+  "corner": true,
+  "start_m": 1440.0,
+  "end_m": 1580.0,
+  "apex_m": 1475.0
+ },
+ {
+  "name": "straight 3",
+  "corner": false,
+  "start_m": 1580.0,
+  "end_m": 2070.0,
+  "apex_m": null
+ },
+ {
+  "name": "Stowe",
+  "corner": true,
+  "start_m": 2070.0,
+  "end_m": 2540.0,
+  "apex_m": 2340.0
+ },
+ {
+  "name": "straight 4",
+  "corner": false,
+  "start_m": 2540.0,
+  "end_m": 2605.0,
+  "apex_m": null
+ },
+ {
+  "name": "Vale",
+  "corner": true,
+  "start_m": 2605.0,
+  "end_m": 2855.0,
+  "apex_m": 2825.0
+ },
+ {
+  "name": "Club",
+  "corner": true,
+  "start_m": 2855.0,
+  "end_m": 3200.0,
+  "apex_m": 2875.0
+ },
+ {
+  "name": "straight 5",
+  "corner": false,
+  "start_m": 3200.0,
+  "end_m": 3350.0,
+  "apex_m": null
+ },
+ {
+  "name": "Abbey",
+  "corner": true,
+  "start_m": 3350.0,
+  "end_m": 3730.0,
+  "apex_m": 3610.0
+ },
+ {
+  "name": "Farm",
+  "corner": true,
+  "start_m": 3730.0,
+  "end_m": 3980.0,
+  "apex_m": 3830.0
+ },
+ {
+  "name": "Village",
+  "corner": true,
+  "start_m": 3980.0,
+  "end_m": 4160.0,
+  "apex_m": 4090.0
+ },
+ {
+  "name": "The Loop",
+  "corner": true,
+  "start_m": 4160.0,
+  "end_m": 4560.0,
+  "apex_m": 4215.0
+ },
+ {
+  "name": "straight 6",
+  "corner": false,
+  "start_m": 4560.0,
+  "end_m": 4885.0,
+  "apex_m": null
+ },
+ {
+  "name": "Brooklands",
+  "corner": true,
+  "start_m": 4885.0,
+  "end_m": 5255.0,
+  "apex_m": 5170.0
+ },
+ {
+  "name": "Luffield",
+  "corner": true,
+  "start_m": 5255.0,
+  "end_m": 5565.0,
+  "apex_m": 5350.0
+ },
+ {
+  "name": "Woodcote",
+  "corner": true,
+  "start_m": 5565.0,
+  "end_m": 5869.2,
+  "apex_m": 5780.0
+ }
+]

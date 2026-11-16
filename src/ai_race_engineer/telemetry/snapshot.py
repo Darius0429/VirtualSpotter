@@ -95,6 +95,25 @@ class VehicleState:
 
 
 @dataclass(frozen=True)
+class WheelState:
+    """Telemetry of one wheel of the player's car.
+    speed_mps       float  m/s rolling speed of the tyre (rotation x radius), forward positive
+    grip_fraction   float  0-1 share of the contact patch that is sliding, as the game approximates it
+    surface_temp_c  tuple[float, float, float]  degC of the tread: left, centre, right as seen from behind
+    carcass_temp_c  float  degC
+    pressure_kpa    float  kPa
+    brake_temp_c    float  degC
+    """
+
+    speed_mps: float
+    grip_fraction: float
+    surface_temp_c: tuple[float, float, float]
+    carcass_temp_c: float
+    pressure_kpa: float
+    brake_temp_c: float
+
+
+@dataclass(frozen=True)
 class PlayerState:
     """Player-only telemetry.
     vehicle                  VehicleState
@@ -113,6 +132,7 @@ class PlayerState:
     tyre_compound_front      str
     tyre_compound_rear       str
     tyre_surface_temp_c      tuple[float, float, float, float]  degC (FL, FR, RL, RR)
+    wheels                   tuple[WheelState, ...]  FL, FR, RL, RR; empty when the source has none
     """
 
     vehicle: VehicleState
@@ -131,6 +151,7 @@ class PlayerState:
     tyre_compound_front: str
     tyre_compound_rear: str
     tyre_surface_temp_c: tuple[float, float, float, float]
+    wheels: tuple[WheelState, ...] = ()
 
 
 @dataclass(frozen=True)

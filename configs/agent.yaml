@@ -1,0 +1,11 @@
+attempts: 3                  # tries per question when the model or the network fails
+retry_wait_s: 2.0            # s between two tries
+error_reply: I could not get that, say again.
+api_key_env: ANTHROPIC_API_KEY   # questions are disabled when this environment variable is not set
+claude:
+  router_model: claude-haiku-5-5   # picks the reasoning effort of each question
+  model: claude-sonnet-5-5         # answers with the tools
+  max_tokens:                      # output token limit per effort, thinking included
+    low: 4096
+    medium: 4096
+    high: 16384

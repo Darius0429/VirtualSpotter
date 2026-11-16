@@ -1,1 +1,30 @@
 consumption_window_laps: 3
+track_maps: configs/track_maps   # one JSON file per track layout with its corners and straights; the stored ones carry
+                                 # the real-life turn numbers or names, an unknown track is learned from the first lap
+corner_plots: data/plots     # folder of the corner plots the agent draws
+segments:
+  keep_laps: 30              # analysed laps kept, with their telemetry
+  map:                       # how an unknown track is split into corners and straights
+    step_m: 5.0              # spacing the driven line is resampled to
+    smooth_m: 55.0           # window of the smoothing filter
+    max_radius_m: 400.0      # path radius below which the line is a corner
+    min_turn_deg: 18.0       # the line must turn this much in a corner; less is a kink or a weave on a straight
+    entry_pad_m: 150.0       # added before a corner to hold the braking
+    exit_pad_m: 50.0         # added after a corner to hold the exit
+    merge_gap_m: 30.0        # corners closer than this become one (chicanes, esses)
+  card:                      # what counts as an event in a corner
+    brake_on: 0.05           # 0-1 brake above which the driver is braking
+    throttle_on: 0.05        # 0-1 throttle above which the driver is on the throttle
+    full_throttle: 0.95      # 0-1 throttle from which the driver is at full throttle
+    throttle_lift: 0.05      # 0-1 drop of the throttle between two samples that counts as a lift
+    turn_in_g: 0.5           # g lateral acceleration from which the car is turning in
+    lock_ratio: 0.85         # wheel speed over car speed below which a braked wheel is locking
+    spin_ratio: 1.08         # wheel speed over car speed above which a rear wheel is spinning
+    search_m: 150.0          # m before a corner in which its braking is looked for
+    after_exit_m: 150.0      # m after a corner where the speed is taken again
+  findings:                  # differences to the best lap from which something is said
+    distance_m: 5.0          # brake point, full throttle and a locked wheel; half of it for the line at the apex
+    speed_kph: 2.0
+    decel_g: 0.1
+    time_s: 0.15             # coasting, countersteering, wheelspin
+  plot_margin_m: 60.0        # m shown before and after the corner in a plot

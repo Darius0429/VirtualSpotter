@@ -1,0 +1,7 @@
+car_length_m: 4.8            # centre-to-centre distance at which bumpers meet
+car_width_m: 2.0             # cars with |lateral| < width/2 are not "beside"
+lateral_range_m: 6.0         # max |lateral| still counted as beside
+longitudinal_overlap_m: 0.5  # extra margin added to car_length_m (warn slightly early)
+clear_hold_s: 0.6            # a side must be empty this long before "clear"
+repeat_suppress_s: 2.0       # min time from a side's "car X" to its "clear" (only delays clears)
+min_speed_mps: 8.0           # spotter silent (and reset) below this player speed or in pits

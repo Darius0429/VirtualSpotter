@@ -1,0 +1,17 @@
+sample_rate_hz: 16000        # Vosk models are 16 kHz mono
+poll_hz: 50                  # button polling
+talk:
+  mode: HOLD                 # HOLD = record while held; TOGGLE = press to start, press to stop
+  max_s: 15.0                # recording is cut here
+filter:
+  min_audio_s: 0.4           # shorter recordings are dropped (accidental press)
+  min_words: 2               # fewer words are dropped (noise is often heard as "the")
+button:
+  kind: joystick             # joystick | keyboard
+  device_name: "La Prima Wheel"            # joystick: part of the name printed by scripts/setup_voice.py button
+  button: 8                  # joystick: button index printed by the same script
+  key_vk: 123                # Windows virtual-key code used when kind is keyboard (123 = F12)
+microphone:
+  device: null               # null = Windows default input; else index or name from scripts/setup_voice.py microphones
+vosk:
+  model_dir: models/vosk-model-en-us-0.22-lgraph

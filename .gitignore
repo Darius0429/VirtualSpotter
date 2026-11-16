@@ -187,3 +187,15 @@ data/processed/*
 
 # Claude
 .claude/
+
+# Personal Claude Code instructions (local only)
+CLAUDE.md
+
+# engineer run logs, session summaries and history: contain real driver names
+data/logs/
+data/sessions/
+data/history/
+
+# Downloaded models (large, local only)
+models/*
+!models/.gitkeep

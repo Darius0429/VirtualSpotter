@@ -1,0 +1,19 @@
+# Characteristics of each track, keyed by the game's track name (scoring mTrackName).
+# pit_lane_time_s: seconds from the pit entry line to the pit exit line, excluding the time standing still in the box.
+# pit_entry_m / pit_exit_m: lap distance where the game switches a car to "in pits" and back.
+# straights: [start_m, end_m] lap distances with path radius above 400 m and no braking, at least 150 m long,
+#            measured from recorded laps; a straight that crosses the start line has start_m > end_m.
+
+Algarve International Circuit:
+  length_m: 4635.3
+  pit_lane_time_s: 31.0   # 3 measured passes: 30.6, 31.0, 31.4
+  pit_entry_m: 4301.0
+  pit_exit_m: 136.0
+  straights: [[980.0, 1280.0], [2160.0, 2330.0], [4090.0, 250.0]]   # 5 laps
+
+Bahrain International Circuit:
+  length_m: 5386.8
+  pit_lane_time_s: 28.0   # 31 measured passes, both classes: median 27.9 (Hyper), 28.2 (GT3)
+  pit_entry_m: 5350.0
+  pit_exit_m: 381.0
+  straights: [[1020.0, 1370.0], [2340.0, 2510.0], [2780.0, 3290.0], [4210.0, 4750.0], [5050.0, 550.0]]   # 24 laps

@@ -1,0 +1,6 @@
+enabled: true                # one switch; --no-log overrides it
+root: data/logs              # one folder per process start
+level: INFO                  # stdlib logging level written to log.jsonl
+state_period_s: 5.0          # session s between RaceState snapshots
+health_period_s: 10.0        # s between timing-health records
+restart_wait_s: 1.0          # s before a failed thread loop is started again
