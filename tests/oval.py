@@ -67,7 +67,11 @@ def _snapshot(
     base: dict[str, object] = dict.fromkeys((f.name for f in dataclasses.fields(VehicleState)), 0)
     base.update(
         is_player=True,
+        driver_name="Me",
+        vehicle_name="Team Car #1:X",
+        class_name="Hyper",
         completed_laps=completed_laps,
+        lap_distance_m=distance_m,
         last_lap_s=last_lap_s,
         in_pits=in_pits,
         position_xz_m=_position_xz_m(distance_m),

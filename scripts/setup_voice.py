@@ -18,12 +18,12 @@ from ai_race_engineer.voice.voice_questions import VoiceQuestions
 from ai_race_engineer.voice.vosk_stt import VoskSpeechToText
 from ai_race_engineer.voice.whisper_stt import WhisperSpeechToText
 
-STT: dict[str, Callable[[dict[str, object], int], SpeechToText]] = {
-    "whisper": lambda cfg, rate: WhisperSpeechToText(**cfg["whisper"], sample_rate_hz=rate),
-    "elevenlabs": lambda cfg, rate: ElevenLabsSpeechToText(
+STT: dict[str, Callable[[dict[str, object], int, Callable[[], str]], SpeechToText]] = {
+    "whisper": lambda cfg, rate, names: WhisperSpeechToText(**cfg["whisper"], sample_rate_hz=rate, names=names),
+    "elevenlabs": lambda cfg, rate, names: ElevenLabsSpeechToText(
         ElevenLabs(api_key=os.environ[cfg["tts"]["api_key_env"]]), **cfg["elevenlabs_stt"], sample_rate_hz=rate
     ),
-    "vosk": lambda cfg, rate: VoskSpeechToText(Path(cfg["vosk"]["model_dir"]), rate),
+    "vosk": lambda cfg, rate, names: VoskSpeechToText(Path(cfg["vosk"]["model_dir"]), rate),
 }
 
 BUTTONS: dict[str, Callable[[dict[str, object]], Button]] = {
@@ -69,9 +69,9 @@ def listen(voice: Path = Path("configs/voice.yaml"), compare: bool = False) -> N
     questions = VoiceQuestions(
         BUTTONS[cfg["button"]["kind"]](cfg["button"]),
         Microphone(cfg["microphone"]["device"], rate),
-        CompareSpeechToText({name: build(cfg, rate) for name, build in STT.items()})
+        CompareSpeechToText({name: build(cfg, rate, str) for name, build in STT.items()})
         if compare
-        else STT[cfg["stt"]["engine"]](cfg, rate),
+        else STT[cfg["stt"]["engine"]](cfg, rate, str),
         TalkSwitch(TalkMode[cfg["talk"]["mode"]], cfg["talk"]["max_s"]),
         rate,
         **cfg["filter"],

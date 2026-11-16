@@ -61,10 +61,45 @@ def lap_samples(players: Sequence[PlayerState], track_length_m: float, lap_time_
          lap_time_s      float                  s the game timed the lap
     Out:                 LapSamples
     """
+    return _samples(players, track_length_m, lap_time_s)
+
+
+def open_lap_samples(players: Sequence[PlayerState], distance_scale: float) -> LapSamples:
+    """Arrays of a lap that is still being driven, from the line to now: the driven line is scaled by a factor
+    known from an earlier lap instead of to the track length, and the time is left as the line over the speed.
+    In:  players         Sequence[PlayerState]  states from the line to now, in order
+         distance_scale  float                  track length over the length of the driven line of a full lap
+    Out:                 LapSamples
+    """
+    return _samples(players, None, None, distance_scale)
+
+
+def driven_length_m(players: Sequence[PlayerState]) -> float:
+    """Length of the line driven through a run of player states.
+    In:  players  Sequence[PlayerState]
+    Out:          float  m
+    """
+    x_m, z_m = np.array([p.vehicle.position_xz_m for p in players], dtype=np.float64).T
+    return float(np.hypot(np.diff(x_m), np.diff(z_m)).sum())
+
+
+def _samples(
+    players: Sequence[PlayerState],
+    track_length_m: float | None,
+    lap_time_s: float | None,
+    distance_scale: float = 1.0,
+) -> LapSamples:
+    """Arrays of a run of player states from the line.
+    In:  players         Sequence[PlayerState]  states in order
+         track_length_m  float | None           m the distance is scaled to end at; None = use distance_scale
+         lap_time_s      float | None           s the time is scaled to end at; None = not scaled
+         distance_scale  float                  factor on the driven line when track_length_m is None
+    Out:                 LapSamples
+    """
     ticks = [players[0], *(b for a, b in zip(players, players[1:], strict=False) if _moved(a, b))]
     x_m, z_m = np.array([p.vehicle.position_xz_m for p in ticks], dtype=np.float64).T
     speed_mps = np.array([p.vehicle.speed_mps for p in ticks], dtype=np.float64)
-    line = line_samples(x_m, z_m, speed_mps, track_length_m, lap_time_s)
+    line = line_samples(x_m, z_m, speed_mps, track_length_m, lap_time_s, distance_scale)
     wheel_mps = np.array([[w.speed_mps for w in p.wheels] or [p.vehicle.speed_mps] * 4 for p in ticks])
     ratio = np.divide(wheel_mps, speed_mps[:, None], out=np.ones_like(wheel_mps), where=speed_mps[:, None] > 0)
     return LapSamples(
@@ -89,16 +124,18 @@ def line_samples(
     x_m: NDArray[np.float64],
     z_m: NDArray[np.float64],
     speed_mps: NDArray[np.float64],
-    track_length_m: float,
-    lap_time_s: float,
+    track_length_m: float | None,
+    lap_time_s: float | None,
+    distance_scale: float = 1.0,
 ) -> LineSamples:
     """Line of one lap from the positions and speeds polled from line to line. Distance is the length of the driven
     line and time is that length over the speed, each scaled to the track length and the timed lap.
     In:  x_m             NDArray[np.float64]  m world x of each sample
          z_m             NDArray[np.float64]  m world z of each sample
          speed_mps       NDArray[np.float64]  m/s of each sample
-         track_length_m  float                m
-         lap_time_s      float                s the game timed the lap
+         track_length_m  float | None         m the distance is scaled to end at; None = use distance_scale
+         lap_time_s      float | None         s the time is scaled to end at; None = not scaled
+         distance_scale  float                factor on the driven line when track_length_m is None
     Out:                 LineSamples
     """
     chord_m = np.hypot(np.diff(x_m), np.diff(z_m))
@@ -106,9 +143,10 @@ def line_samples(
     step_s = np.divide(chord_m, mean_mps, out=np.zeros_like(chord_m), where=mean_mps > 0)
     distance_m = np.concatenate(([0.0], np.cumsum(chord_m)))
     time_s = np.concatenate(([0.0], np.cumsum(step_s)))
-    return LineSamples(
-        distance_m * track_length_m / distance_m[-1], time_s * lap_time_s / time_s[-1], x_m, z_m, speed_mps
-    )
+    if track_length_m is not None:
+        distance_scale = track_length_m / distance_m[-1]
+    time_scale = 1.0 if lap_time_s is None else lap_time_s / time_s[-1]
+    return LineSamples(distance_m * distance_scale, time_s * time_scale, x_m, z_m, speed_mps)
 
 
 def _moved(before: PlayerState, after: PlayerState) -> bool:

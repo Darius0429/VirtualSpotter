@@ -15,6 +15,7 @@ microphone:
   device: null               # null = Windows default input; else index or name from scripts/setup_voice.py microphones
 stt:
   engine: whisper            # whisper (local, free) | elevenlabs (API) | vosk (local, weakest)
+  recordings: data/voice     # every question is kept here as a WAV file named after what was heard
 elevenlabs_stt:
   model: scribe_v2
   language: en
@@ -25,7 +26,8 @@ whisper:
   compute_type: int8
   prompt: >-                 # words the driver uses; the model leans towards them
     Race engineer radio in Le Mans Ultimate. Words used: pit, box, stint, undercut, overcut, lift and coast,
-    virtual energy, fuel, tyre temps, pressures, lock up, GT3 traffic, Hypercar, LMP2, P2, turn ten, apex, sector.
+    virtual energy, fuel, tyre temps, pressures, lock up, GT3 traffic, Hypercar, LMP2, P2, turn ten, apex, sector,
+    did someone hit me, contact, crash, catch the car ahead, losing time, fastest lap overall, slow in turn thirteen.
 tts:
   engine: radio              # radio = ElevenLabs voice with the radio sound added locally; print = text on screen only
   api_key_env: TTS_API_KEY   # environment variable that holds the ElevenLabs key

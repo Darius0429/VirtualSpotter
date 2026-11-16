@@ -9,6 +9,7 @@ STORED: tuple[Segment, ...] = (Segment("pit straight", False, 0.0, 1000.0, None)
 class _Store:
     """Stand-in for the track map store.
     stored  dict[str, tuple[Segment, ...]]  track name -> map
+    best    dict[tuple[str, str], tuple[float, object]]  (track, car) -> stored best lap
     saves   int                             maps saved
     """
 
@@ -18,6 +19,7 @@ class _Store:
         Out:         None
         """
         self.stored: dict[str, tuple[Segment, ...]] = stored
+        self.best: dict[tuple[str, str], tuple[float, object]] = {}
         self.saves: int = 0
 
     def load(self, track_name: str) -> tuple[Segment, ...]:
@@ -46,6 +48,8 @@ def _tracker(store: _Store, keep_laps: int = 30) -> SegmentTracker:
     return SegmentTracker(
         store.load,
         store.save,
+        lambda track, car: store.best.get((track, car)),
+        lambda track, car, lap_time_s, samples: store.best.update({(track, car): (lap_time_s, samples)}),
         keep_laps=keep_laps,
         limits=LIMITS,
         step_m=5.0,
@@ -110,3 +114,20 @@ def test_only_the_newest_laps_are_kept_and_a_new_session_starts_empty() -> None:
     assert [lap.lap for lap in tracker.laps] == [3, 4]
     _drive(tracker, (0, None, True))
     assert tracker.laps == ()
+
+
+def test_best_lap_is_stored_and_is_the_reference_of_a_later_session() -> None:
+    """The fastest lap is kept as the reference and saved per track and car; a new session, and a tracker started
+    later with the same store, still have it though their own laps start empty."""
+    store = _Store({})
+    tracker = _tracker(store)
+    _drive(tracker, (0, None, False), (1, 41.0, False), (2, 40.0, False), (3, 39.0, False), (4, 39.5, False))
+    assert (tracker.reference.lap, tracker.reference.lap_time_s) == (0, 39.0)
+    assert store.best[("Oval", "Hyper Team Car")][0] == 39.0
+    _drive(tracker, (0, None, True))
+    assert tracker.laps == ()
+    assert tracker.reference.lap_time_s == 39.0
+    later = _tracker(store)
+    _drive(later, (0, None, False))
+    assert (later.laps, later.reference.lap_time_s) == ((), 39.0)
+    assert [c.name for c in later.reference.cards] == [s.name for s in later.segments]

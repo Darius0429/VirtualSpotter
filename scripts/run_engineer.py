@@ -18,6 +18,7 @@ from ai_race_engineer.agent.claude_agent import ClaudeAgent
 from ai_race_engineer.agent.energy_tools import EnergyTools
 from ai_race_engineer.agent.history_tools import HistoryTools
 from ai_race_engineer.agent.logged_agent import LoggedAgent
+from ai_race_engineer.agent.race_context import RaceContext
 from ai_race_engineer.agent.race_notes import RaceNoteWriter
 from ai_race_engineer.agent.race_story import RaceStory
 from ai_race_engineer.agent.segment_tools import SegmentTools
@@ -33,11 +34,13 @@ from ai_race_engineer.events.low_fuel import LowFuel
 from ai_race_engineer.events.monitor import EventMonitor
 from ai_race_engineer.events.overall_best import OverallBest
 from ai_race_engineer.events.personal_best import PersonalBest
+from ai_race_engineer.events.plan_briefing import PlanBriefing
 from ai_race_engineer.events.rival_watch import RivalWatch
 from ai_race_engineer.events.sector_comparison import SectorComparison
 from ai_race_engineer.events.spotter import Spotter
 from ai_race_engineer.events.timeline_builder import TimelineBuilder
 from ai_race_engineer.events.traffic_ahead import TrafficAhead
+from ai_race_engineer.recorders.best_lap_store import BestLapStore
 from ai_race_engineer.recorders.corner_plot import CornerPlotter
 from ai_race_engineer.recorders.health_log import HealthLog
 from ai_race_engineer.recorders.history_store import HistoryStore
@@ -56,6 +59,7 @@ from ai_race_engineer.strategy.contacts import ContactTracker
 from ai_race_engineer.strategy.corner_card import CardLimits
 from ai_race_engineer.strategy.corner_compare import FindingLimits
 from ai_race_engineer.strategy.lap_history import LapHistory
+from ai_race_engineer.strategy.live_segments import LiveSegmentTracker
 from ai_race_engineer.strategy.pit_log import PitStopLog
 from ai_race_engineer.strategy.pit_time import PitLane, PitRates
 from ai_race_engineer.strategy.prior_field import PriorFieldTracker
@@ -93,6 +97,7 @@ from ai_race_engineer.voice.logged_stt import LoggedSpeechToText
 from ai_race_engineer.voice.logged_tts import LoggedTextToSpeech
 from ai_race_engineer.voice.microphone import Microphone
 from ai_race_engineer.voice.radio_effect import RadioSound
+from ai_race_engineer.voice.recorded_stt import RecordedSpeechToText
 from ai_race_engineer.voice.speech_loop import SpeechLoop
 from ai_race_engineer.voice.talk_switch import TalkMode, TalkSwitch
 from ai_race_engineer.voice.timed_print_tts import TimedPrintTextToSpeech
@@ -101,12 +106,12 @@ from ai_race_engineer.voice.voice_questions import VoiceQuestions
 from ai_race_engineer.voice.vosk_stt import VoskSpeechToText
 from ai_race_engineer.voice.whisper_stt import WhisperSpeechToText
 
-STT: dict[str, Callable[[dict[str, object], int], SpeechToText]] = {
-    "whisper": lambda cfg, rate: WhisperSpeechToText(**cfg["whisper"], sample_rate_hz=rate),
-    "elevenlabs": lambda cfg, rate: ElevenLabsSpeechToText(
+STT: dict[str, Callable[[dict[str, object], int, Callable[[], str]], SpeechToText]] = {
+    "whisper": lambda cfg, rate, names: WhisperSpeechToText(**cfg["whisper"], sample_rate_hz=rate, names=names),
+    "elevenlabs": lambda cfg, rate, names: ElevenLabsSpeechToText(
         ElevenLabs(api_key=os.environ[cfg["tts"]["api_key_env"]]), **cfg["elevenlabs_stt"], sample_rate_hz=rate
     ),
-    "vosk": lambda cfg, rate: VoskSpeechToText(Path(cfg["vosk"]["model_dir"]), rate),
+    "vosk": lambda cfg, rate, names: VoskSpeechToText(Path(cfg["vosk"]["model_dir"]), rate),
 }
 BUTTONS: dict[str, Callable[[dict[str, object]], Button]] = {
     "joystick": lambda cfg: JoystickButton(cfg["device_name"], cfg["button"]),
@@ -263,13 +268,23 @@ def main(
     )
     map_store = TrackMapStore(Path(strat_cfg["track_maps"]))
     seg_cfg = strat_cfg["segments"]
+    best_laps = BestLapStore(Path(strat_cfg["best_laps"]))
     segments = SegmentTracker(
-        map_store.load, map_store.save, seg_cfg["keep_laps"], CardLimits(**seg_cfg["card"]), **seg_cfg["map"]
+        map_store.load,
+        map_store.save,
+        best_laps.load,
+        best_laps.save,
+        seg_cfg["keep_laps"],
+        CardLimits(**seg_cfg["card"]),
+        **seg_cfg["map"],
     )
+    now = RaceContext(tracker, segments)
     rival_lines = RivalLineTracker()
+    live_segments = LiveSegmentTracker(lambda: segments.segments)
     segment_tools = SegmentTools(
         segments,
         rival_lines,
+        live_segments,
         CornerPlotter(
             Path(strat_cfg["corner_plots"]),
             seg_cfg["plot_margin_m"],
@@ -297,6 +312,7 @@ def main(
         clock.update,
         segments.update,
         rival_lines.update,
+        live_segments.update,
         garage.update,
         session_log.update,
         tracker.update,
@@ -322,6 +338,7 @@ def main(
             FastestLap(),
             OverallBest(),
             PersonalBest(),
+            PlanBriefing(lambda: tools.race_plan(), lambda: energy_tools.pit_energy(), ev_cfg["plan_briefing_hold_s"]),
             TrafficAhead(tracker, race_cfg["traffic_callout_laps"], race_cfg["traffic_pack_gap_m"]),
             SectorComparison(),
             LowFuel(consumption, ev_cfg["low_fuel_laps"], ev_cfg["low_energy_laps"]),
@@ -385,6 +402,7 @@ def main(
                 ],
                 **agent_cfg["claude"],
                 log=run_log,
+                context=now,
             )
             threading.Thread(target=claude.warm, daemon=True).start()
             engineer: Agent = TimelineAgent(
@@ -403,7 +421,15 @@ def main(
                 lambda: VoiceQuestions(
                     BUTTONS[voice_cfg["button"]["kind"]](voice_cfg["button"]),
                     Microphone(voice_cfg["microphone"]["device"], rate),
-                    LoggedSpeechToText(STT[voice_cfg["stt"]["engine"]](voice_cfg, rate), run_log, rate),
+                    LoggedSpeechToText(
+                        RecordedSpeechToText(
+                            STT[voice_cfg["stt"]["engine"]](voice_cfg, rate, now.driver_names),
+                            Path(voice_cfg["stt"]["recordings"]),
+                            rate,
+                        ),
+                        run_log,
+                        rate,
+                    ),
                     TalkSwitch(TalkMode[voice_cfg["talk"]["mode"]], voice_cfg["talk"]["max_s"]),
                     rate,
                     **voice_cfg["filter"],

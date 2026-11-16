@@ -79,7 +79,8 @@ def segment_line(line: LineSamples, segment: Segment, search_m: float) -> Segmen
 
 class RivalLineTracker:
     """Collects the position and speed of every other car and keeps the line of each car's fastest and of its last
-    full lap of the session. Laps through the pits, laps joined halfway and laps the game did not time are left out.
+    full lap; the fastest lap is kept when a new session starts on the same track. Laps through the pits, laps
+    joined halfway and laps the game did not time are left out.
     best           dict[int, RivalLap]  slot id -> fastest lap seen (replaced, never mutated)
     last           dict[int, RivalLap]  slot id -> last full lap seen (replaced, never mutated)
     player_class   str                  class of the player's car
@@ -125,7 +126,6 @@ class RivalLineTracker:
         laps = self._laps.get(slot)
         if vehicle.completed_laps != laps:
             if laps is not None and vehicle.completed_laps < laps:
-                self.best = {key: lap for key, lap in self.best.items() if key != slot}
                 self.last = {key: lap for key, lap in self.last.items() if key != slot}
             elif self._full.get(slot) and vehicle.completed_laps == laps + 1 and vehicle.last_lap_s is not None:
                 self._finish(vehicle, track_length_m)

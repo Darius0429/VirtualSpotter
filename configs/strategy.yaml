@@ -1,6 +1,7 @@
 consumption_window_laps: 3
 track_maps: configs/track_maps   # one JSON file per track layout with its corners and straights; the stored ones carry
                                  # the real-life turn numbers or names, an unknown track is learned from the first lap
+best_laps: data/processed/best_laps   # the driver's best lap per track and car, kept across sessions
 corner_plots: data/plots     # folder of the corner plots the agent draws
 segments:
   keep_laps: 30              # analysed laps kept, with their telemetry

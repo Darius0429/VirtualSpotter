@@ -9,6 +9,7 @@ from ai_race_engineer.agent.segment_tools import SegmentTools
 from ai_race_engineer.agent.tool_schema import tool_schema
 from ai_race_engineer.recorders.corner_plot import CornerPlotter
 from ai_race_engineer.recorders.run_log import RunLog
+from ai_race_engineer.strategy.live_segments import LiveSegmentTracker
 from ai_race_engineer.strategy.rival_lines import RivalLineTracker
 from ai_race_engineer.strategy.segment_tracker import SegmentTracker
 from tests.oval import oval_lap, with_rival
@@ -67,16 +68,19 @@ def _tool_use(name: str, **arguments: object) -> SimpleNamespace:
     return SimpleNamespace(type="tool_use", id="call_1", name=name, input=arguments)
 
 
-def _trackers() -> tuple[SegmentTracker, RivalLineTracker]:
+def _trackers() -> tuple[SegmentTracker, RivalLineTracker, LiveSegmentTracker]:
     """Segment tracker after four laps of the oval: lap 2 (40.0 s, braked 20 m earlier), lap 3 (39.5 s) and
     lap 4 (40.5 s) are analysed. Rival One drives the same laps 3 m further in x and 0.5 s faster.
     In:  -
-    Out: tuple[SegmentTracker, RivalLineTracker]
+    Out: tuple[SegmentTracker, RivalLineTracker, LiveSegmentTracker]
     """
     rivals = RivalLineTracker()
+    live = LiveSegmentTracker(lambda: tracker.segments)
     tracker = SegmentTracker(
         lambda track: (),
         lambda track, segments: None,
+        lambda track, car: None,
+        lambda track, car, lap_time_s, samples: None,
         keep_laps=30,
         limits=LIMITS,
         step_m=5.0,
@@ -99,7 +103,8 @@ def _trackers() -> tuple[SegmentTracker, RivalLineTracker]:
         for snapshot in with_rival(lap, "Rival One", rival_s, shift_x_m=3.0):
             tracker.update(snapshot)
             rivals.update(snapshot)
-    return tracker, rivals
+            live.update(snapshot)
+    return tracker, rivals, live
 
 
 def _agent(tmp_path: Path, effort: str, *replies: SimpleNamespace) -> tuple[ClaudeAgent, _Messages, _Messages]:
@@ -120,6 +125,7 @@ def _agent(tmp_path: Path, effort: str, *replies: SimpleNamespace) -> tuple[Clau
         model="claude-sonnet-5-5",
         max_tokens=MAX_TOKENS,
         log=RunLog(tmp_path, False, lambda: 0.0),
+        context=lambda: "Now: race, on lap 5, at turn 1.",
     )
     return agent, router, main
 
@@ -129,8 +135,8 @@ def _tools(tmp_path: Path) -> SegmentTools:
     In:  tmp_path  Path
     Out:           SegmentTools
     """
-    tracker, rivals = _trackers()
-    return SegmentTools(tracker, rivals, CornerPlotter(tmp_path, 60.0, 0.05, 0.05), FINDINGS, 150.0)
+    tracker, rivals, live = _trackers()
+    return SegmentTools(tracker, rivals, live, CornerPlotter(tmp_path, 60.0, 0.05, 0.05), FINDINGS, 150.0)
 
 
 @pytest.mark.parametrize(
@@ -152,6 +158,7 @@ def test_question_is_routed_answered_with_a_tool_and_spoken(
     assert agent.answer(question) == "Copy."
     assert router.calls[0]["model"] == "claude-haiku-5-5"
     assert router.calls[0]["messages"] == [{"role": "user", "content": question}]
+    assert main.calls[0]["messages"][0]["content"].split("\n") == [question, "", "[Now: race, on lap 5, at turn 1.]"]
     assert router.calls[0]["output_config"]["format"]["type"] == "json_schema"
     assert [call["output_config"] for call in main.calls] == [{"effort": effort}] * 2
     assert main.calls[0]["max_tokens"] == MAX_TOKENS[effort]
@@ -159,6 +166,8 @@ def test_question_is_routed_answered_with_a_tool_and_spoken(
     strict = {schema["name"]: schema["strict"] for schema in main.calls[0]["tools"]}
     assert strict == {
         "lap_losses": True,
+        "this_lap": False,
+        "live_corners": True,
         "corner_analysis": True,
         "corner_plot": True,
         "rival_comparison": True,
@@ -266,4 +275,39 @@ def test_warming_writes_the_cache_without_asking_for_output(tmp_path: Path) -> N
     assert router.calls == []
     assert main.calls[0]["max_tokens"] == 0
     assert main.calls[0]["system"][0]["cache_control"] == {"type": "ephemeral", "ttl": "1h"}
-    assert len(main.calls[0]["tools"]) == 5
+    assert len(main.calls[0]["tools"]) == 7
+
+
+def test_best_lap_and_class_fastest_comparisons(tmp_path: Path) -> None:
+    """Lap -1 is the driver's best lap; the lap ranking also says where it loses to the fastest lap of the class,
+    and a corner also gives the fastest pass of the class."""
+    tools = _tools(tmp_path)
+    losses = tools.lap_losses(-1)
+    assert (losses["lap"], losses["best_lap"]) == (3, 3)
+    fastest = losses["against_fastest_in_class"]
+    assert (fastest["driver"], fastest["their_lap_time_s"], len(fastest["segments"])) == ("Rival One", 39.0, 5)
+    assert fastest["segments"][0]["lost_s"] >= fastest["segments"][-1]["lost_s"]
+    corner = tools.corner_analysis("turn 1", -1)
+    assert corner["fastest_pass_in_class"]["driver"] == "Rival One"
+    assert abs(corner["fastest_pass_in_class"]["line_wider_m"]) == pytest.approx(3.0, abs=0.5)
+
+
+def test_lap_in_progress_and_live_corners(tmp_path: Path) -> None:
+    """Part of a new lap braked 20 m earlier: the corner already left is on this lap with what was different, and
+    the driver's latest pass of each segment is set against the rival's."""
+    tracker, rivals, live = _trackers()
+    tools = SegmentTools(tracker, rivals, live, CornerPlotter(tmp_path, 60.0, 0.05, 0.05), FINDINGS, 150.0)
+    assert [s["name"] for s in tools.this_lap()["segments"]] == ["turn 2", "straight 2", "turn 1", "straight 1"]
+    lap = with_rival(oval_lap(5, 40.5, brake_zone_m=120.0), "Rival One", 40.0, shift_x_m=3.0)
+    for snapshot in lap[: len(lap) * 2 // 3]:
+        tracker.update(snapshot)
+        live.update(snapshot)
+    now = tools.this_lap()
+    assert [s["name"] for s in now["segments"]] == ["straight 2", "turn 1", "straight 1"]
+    assert now["segments"][1]["findings"][0].endswith(" m earlier")
+    assert now["lost_so_far_s"] == pytest.approx(sum(s["lost_s"] for s in now["segments"]), abs=0.02)
+    corners = tools.live_corners("")
+    assert corners["driver"] == "Rival One"
+    assert {"turn 1", "straight 1"} <= {s["name"] for s in corners["segments"]}
+    assert all(abs(s["lost_s"]) < 0.1 for s in corners["segments"])
+    assert tools.live_corners("nobody") == {"available": False}

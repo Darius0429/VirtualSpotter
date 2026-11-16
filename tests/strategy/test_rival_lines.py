@@ -34,14 +34,15 @@ def test_fastest_full_lap_of_another_car_is_kept() -> None:
 
 
 def test_pit_laps_and_untimed_laps_are_left_out_and_a_new_session_starts_empty() -> None:
-    """A lap through the pits or without a time is not kept; a lap count that goes down drops the car's lap."""
+    """A lap through the pits or without a time is not kept; a lap count that goes down starts a new
+    session: the car's fastest lap is kept, its last lap is not."""
     tracker = RivalLineTracker()
     _drive(tracker, (0, None, False), (1, 41.0, True), (2, 60.0, False), (3, None, False))
     assert tracker.best == {}
     _drive(tracker, (4, 40.0, False))
     assert tracker.best[1].lap_time_s == 40.0
     _drive(tracker, (0, None, True))
-    assert (tracker.best, tracker.last) == ({}, {})
+    assert (tracker.best[1].lap_time_s, tracker.last) == (40.0, {})
 
 
 def test_segment_figures_from_line_and_speed() -> None:

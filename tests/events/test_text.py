@@ -6,9 +6,11 @@ def test_lap_time_text() -> None:
     assert lap_time_text(112.34) == "1:52.3"
 
 
-def test_lap_time_rounds_across_minute() -> None:
-    """Rounding up to a full minute carries into the minutes."""
-    assert lap_time_text(59.96) == "1:00.0"
+def test_lap_time_is_cut_to_the_tenth_below() -> None:
+    """A lap time is never rounded up: 1:45.999 is a 1:45.9."""
+    assert lap_time_text(105.999) == "1:45.9"
+    assert lap_time_text(59.96) == "0:59.9"
+    assert lap_time_text(60.0) == "1:00.0"
 
 
 def test_lap_time_pads_seconds() -> None:

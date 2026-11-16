@@ -1,9 +1,9 @@
 def lap_time_text(lap_s: float) -> str:
-    """Lap time as spoken/printed text, rounded to tenths.
+    """Lap time as spoken/printed text, cut to the tenth below as on a timing screen.
     In:  lap_s  float  s
-    Out:        str    "m:ss.s", e.g. 112.34 -> "1:52.3"
+    Out:        str    "m:ss.s", e.g. 112.39 -> "1:52.3", 105.999 -> "1:45.9"
     """
-    minutes, tenths = divmod(round(lap_s * 10), 600)
+    minutes, tenths = divmod(int(lap_s * 10 + 1e-6), 600)
     return f"{minutes}:{tenths // 10:02d}.{tenths % 10}"
 
 

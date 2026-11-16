@@ -5,6 +5,7 @@ from pathlib import Path
 from ai_race_engineer.recorders.corner_plot import CornerPlotter
 from ai_race_engineer.strategy.corner_compare import FindingLimits, SegmentDelta, compare, line_wider_m
 from ai_race_engineer.strategy.lap_summary import theoretical_best_s
+from ai_race_engineer.strategy.live_segments import LiveSegmentTracker
 from ai_race_engineer.strategy.rival_lines import RivalLap, RivalLineTracker, segment_line
 from ai_race_engineer.strategy.segment_tracker import AnalysedLap, SegmentTracker
 from ai_race_engineer.strategy.track_map import Segment
@@ -13,6 +14,9 @@ from ai_race_engineer.telemetry.snapshot import WheelState
 UNAVAILABLE: dict[str, object] = {"available": False}
 WHEELS: tuple[str, ...] = ("front_left", "front_right", "rear_left", "rear_right")
 LEFT_WHEELS: tuple[int, ...] = (0, 2)
+BEST_LAP: int = -1
+TOP_LOSSES: int = 6
+LIVE_SEGMENTS: int = 8
 
 
 class SegmentTools:
@@ -21,6 +25,7 @@ class SegmentTools:
     comparison is with the driver's fastest analysed lap of the session.
     _tracker   SegmentTracker    the analysed laps and the latest snapshot
     _rivals    RivalLineTracker  the fastest lap of every other car
+    _live      LiveSegmentTracker  every car's latest pass of every segment
     _search_m  float             m before a corner in which a car's slowing point is looked for
     _plotter   CornerPlotter   draws the corner plots
     _findings  FindingLimits   differences from which something is worth saying
@@ -30,6 +35,7 @@ class SegmentTools:
         self,
         tracker: SegmentTracker,
         rivals: RivalLineTracker,
+        live: LiveSegmentTracker,
         plotter: CornerPlotter,
         findings: FindingLimits,
         search_m: float,
@@ -37,6 +43,7 @@ class SegmentTools:
         """Store the trackers, the plotter and the limits.
         In:  tracker   SegmentTracker
              rivals    RivalLineTracker
+             live      LiveSegmentTracker
              plotter   CornerPlotter
              findings  FindingLimits
              search_m  float             m before a corner in which a car's slowing point is looked for
@@ -44,6 +51,7 @@ class SegmentTools:
         """
         self._tracker: SegmentTracker = tracker
         self._rivals: RivalLineTracker = rivals
+        self._live: LiveSegmentTracker = live
         self._search_m: float = search_m
         self._plotter: CornerPlotter = plotter
         self._findings: FindingLimits = findings
@@ -53,15 +61,18 @@ class SegmentTools:
         time lost in it, most lost first, split into the part before and after the apex, and what the driver did
         differently there in plain words. Also the theoretical best lap (the best pass of every segment added up)
         and the shares of the lap at full throttle, on the brake and coasting. Start here for any question about
-        where time is lost or how to go faster; then look at the worst corners with corner_analysis. Only full laps
-        outside the pits are analysed.
-        In:  lap  int  lap number as the driver counts it; 0 = the last analysed lap
+        where time is lost or how to go faster; then look at the worst corners with corner_analysis. It also gives
+        against_fastest_in_class: the segments where this lap loses most to the fastest lap of the class, which is
+        the answer when the driver asks about the fastest lap overall or has only one lap of their own. The
+        driver's best lap of this car on this track is kept from earlier sessions (lap 0), so there is a lap to
+        compare with from the start of a session. Only full laps outside the pits are analysed.
+        In:  lap  int  lap number as the driver counts it; 0 = the last analysed lap; -1 = the driver's best lap
         Out:      dict[str, object]  {lap, lap_time_s, best_lap, best_lap_time_s, theoretical_best_s, analysed_laps,
                                      full_throttle_percent, braking_percent, coasting_percent, segments: [{name,
                                      lost_s, lost_to_apex_s, lost_from_apex_s, findings}]}; {"available": False}
                                      when no lap or not this lap is analysed
         """
-        laps = self._tracker.laps
+        laps = self._laps()
         chosen = _chosen(laps, lap)
         if chosen is None:
             return UNAVAILABLE
@@ -78,6 +89,7 @@ class SegmentTools:
                 "full_throttle_percent": chosen.shares.full_throttle * 100,
                 "braking_percent": chosen.shares.braking * 100,
                 "coasting_percent": chosen.shares.coasting * 100,
+                "against_fastest_in_class": self._against_fastest(chosen),
                 "segments": [
                     {
                         "name": delta.name,
@@ -91,6 +103,88 @@ class SegmentTools:
             }
         )
 
+    def this_lap(self) -> dict[str, object]:
+        """The lap the driver is on right now: every corner and straight already driven on it, the latest first,
+        with the time lost to the driver's best lap in it, the split before and after the apex, and what the driver
+        did differently there in plain words (brake point, a locked wheel, the line, minimum speed, throttle). A
+        corner appears a moment after the driver has left it. Use it for "what happened there", "what happened this
+        lap" and anything about the corner just driven; when nothing is driven yet, use lap_losses for the last
+        finished lap.
+        In:  -
+        Out: dict[str, object]  {best_lap_time_s, lost_so_far_s, segments: [{name, time_s, lost_s, lost_to_apex_s,
+                                lost_from_apex_s, min_kph, findings}]}; {"available": False} when nothing of this
+                                lap is known yet or the driver has no lap to compare with
+        """
+        cards, samples, laps = self._tracker.live, self._tracker.live_samples, self._laps()
+        if not cards or samples is None or not laps:
+            return UNAVAILABLE
+        best = _best(laps)
+        rows = []
+        for card, reference, segment in zip(cards, best.cards, self._tracker.segments, strict=False):
+            wider_m = line_wider_m(samples, best.samples, segment.apex_m) if segment.corner else None
+            delta = compare(card, reference, wider_m, self._findings)
+            rows.append(
+                {
+                    "name": card.name,
+                    "time_s": card.time_s,
+                    "lost_s": delta.time_s,
+                    "lost_to_apex_s": delta.to_apex_s,
+                    "lost_from_apex_s": delta.from_apex_s,
+                    "min_kph": card.min_kph,
+                    "findings": list(delta.findings),
+                }
+            )
+        return _rounded(
+            {
+                "best_lap_time_s": best.lap_time_s,
+                "lost_so_far_s": sum(row["lost_s"] for row in rows),
+                "segments": rows[::-1],
+            }
+        )
+
+    def live_corners(self, driver: str) -> dict[str, object]:
+        """The driver against another car right now, corner by corner: for the segments the driver drove last, the
+        latest first, the driver's time through each against that car's latest time through the same segment, with
+        the difference in minimum and exit speed. Every car is timed the moment it leaves a segment, so this is
+        current to the last corner. Every difference is the driver minus the other car. Use it for "am I faster
+        than him in turn 10", "where is he quicker right now" and any comparison during a fight.
+        In:  driver  str  driver of the other car, or part of the name; empty = the car directly ahead in class, or
+                          the car behind when the driver leads the class
+        Out:         dict[str, object]  {driver, segments: [{name, my_time_s, their_time_s, lost_s, min_kph,
+                                        exit_kph, my_lap, their_lap}]}; {"available": False} when no car matches or
+                                        nothing was timed yet
+        """
+        snapshot = self._tracker.latest
+        if snapshot is None:
+            return UNAVAILABLE
+        me = snapshot.player.vehicle
+        in_class = sorted((v for v in snapshot.vehicles if v.class_name == me.class_name), key=lambda v: v.place)
+        place = next(index for index, v in enumerate(in_class) if v.slot_id == me.slot_id)
+        wanted = driver.strip().lower()
+        if wanted:
+            other = next((v for v in snapshot.vehicles if not v.is_player and wanted in v.driver_name.lower()), None)
+        else:
+            other = in_class[place - 1] if place else next(iter(in_class[1:2]), None)
+        mine = self._live.last.get(me.slot_id, {})
+        theirs = {} if other is None else self._live.last.get(other.slot_id, {})
+        rows = [
+            {
+                "name": done.segment,
+                "my_time_s": done.time_s,
+                "their_time_s": theirs[name].time_s,
+                "lost_s": done.time_s - theirs[name].time_s,
+                "min_kph": done.min_kph - theirs[name].min_kph,
+                "exit_kph": done.exit_kph - theirs[name].exit_kph,
+                "my_lap": done.lap,
+                "their_lap": theirs[name].lap,
+            }
+            for name, done in sorted(mine.items(), key=lambda item: item[1].finished_s, reverse=True)
+            if name in theirs
+        ]
+        if other is None or not rows:
+            return UNAVAILABLE
+        return _rounded({"driver": other.driver_name, "segments": rows[:LIVE_SEGMENTS]})
+
     def corner_analysis(self, corner: str, lap: int) -> dict[str, object]:
         """Everything the driver did in one corner or on one straight on one lap, and the difference to the same
         segment on the driver's best lap. For a corner: the entry (brake point, speed there, coasting before the
@@ -102,14 +196,17 @@ class SegmentTools:
         number is this lap minus the best lap: a negative brake_point_m is an earlier brake point, a positive
         line_wider_m a wider line at the apex. Segments carry their real-life turn numbers or names ("turn 9 and
         10" is one arc of two official turns); straights are "straight N" from the start/finish line.
+        fastest_pass_in_class is the quickest any car of the class went through this segment on its best lap, with
+        the driver minus that car in time, speeds, where each starts slowing and the line at the apex: when the
+        driver asks why a corner is slow for them, compare the driver's best lap (lap -1) with that pass.
         In:  corner  str  name of the segment, e.g. "turn 3", "Arnage" or "straight 2"
-             lap     int  lap number as the driver counts it; 0 = the last analysed lap
+             lap     int  lap number as the driver counts it; 0 = the last analysed lap; -1 = the driver's best lap
         Out:         dict[str, object]  {lap, best_lap, name, time_s, ..., entry: {...}, mid: {...}, exit: {...},
                                         session_best_time_s, vs_best: {lost_s, lost_to_apex_s, lost_from_apex_s,
                                         line_wider_m, findings, <figure>: difference}}; {"available": False} when
                                         the lap is not analysed or the track has no such segment
         """
-        laps = self._tracker.laps
+        laps = self._laps()
         chosen = _chosen(laps, lap)
         index = _index(self._tracker.segments, corner)
         if chosen is None or index is None:
@@ -125,6 +222,7 @@ class SegmentTools:
                 **card,
                 "energy_percent": None if energy is None else energy * 100,
                 "session_best_time_s": min(entry.cards[index].time_s for entry in laps),
+                "fastest_pass_in_class": self._fastest_pass(chosen, self._tracker.segments[index]),
                 "vs_best": {
                     "lost_s": delta.time_s,
                     "lost_to_apex_s": delta.to_apex_s,
@@ -150,7 +248,7 @@ class SegmentTools:
         Out:          Path | dict[str, object]  the PNG file; {"available": False} when the lap is not analysed, the
                                                 track has no such segment or no lap of that car was seen
         """
-        laps = self._tracker.laps
+        laps = self._laps()
         chosen = _chosen(laps, lap)
         index = _index(self._tracker.segments, corner)
         rival = self._rival(against, their_last_lap) if against else None
@@ -183,9 +281,9 @@ class SegmentTools:
         """
         rival = self._rival(driver, last_lap)
         index = _index(self._tracker.segments, corner) if corner else None
-        if not self._tracker.laps or rival is None or (corner and index is None):
+        if not self._laps() or rival is None or (corner and index is None):
             return {**UNAVAILABLE, "drivers": sorted(lap.driver_name for lap in self._rivals.best.values())}
-        best = self._tracker.laps[-1] if last_lap else _best(self._tracker.laps)
+        best = _chosen(self._laps(), 0) if last_lap else _best(self._laps())
         segments = self._tracker.segments
         mine = [segment_line(best.samples, segment, self._search_m) for segment in segments]
         theirs = [segment_line(rival.line, segment, self._search_m) for segment in segments]
@@ -253,9 +351,76 @@ class SegmentTools:
     def tools(self) -> list[Callable[..., object]]:
         """The functions an agent may call.
         In:  -
-        Out: list[Callable[..., object]]  lap_losses, corner_analysis, corner_plot, rival_comparison, car_health
+        Out: list[Callable[..., object]]  lap_losses, this_lap, live_corners, corner_analysis, corner_plot,
+                                          rival_comparison, car_health
         """
-        return [self.lap_losses, self.corner_analysis, self.corner_plot, self.rival_comparison, self.car_health]
+        return [
+            self.lap_losses,
+            self.this_lap,
+            self.live_corners,
+            self.corner_analysis,
+            self.corner_plot,
+            self.rival_comparison,
+            self.car_health,
+        ]
+
+    def _laps(self) -> tuple[AnalysedLap, ...]:
+        """The analysed laps of the session, then the stored best lap of this car on this track when it is not one
+        of them.
+        In:  -
+        Out: tuple[AnalysedLap, ...]
+        """
+        laps, reference = self._tracker.laps, self._tracker.reference
+        known = reference is None or any(lap.lap_time_s == reference.lap_time_s for lap in laps)
+        return laps if known else (*laps, reference)
+
+    def _against_fastest(self, chosen: AnalysedLap) -> dict[str, object] | None:
+        """Where a lap loses most to the fastest lap in the driver's class.
+        In:  chosen  AnalysedLap
+        Out:         dict[str, object] | None  {driver, their_lap_time_s, segments: [{name, lost_s, min_kph,
+                                               exit_kph}]} with the biggest losses first; None when no lap of
+                                               another car of the class was seen
+        """
+        rival = self._rival("", False)
+        if rival is None:
+            return None
+        rows = []
+        for segment in self._tracker.segments:
+            me = segment_line(chosen.samples, segment, self._search_m)
+            them = segment_line(rival.line, segment, self._search_m)
+            rows.append(
+                {
+                    "name": segment.name,
+                    "lost_s": me.time_s - them.time_s,
+                    "min_kph": me.min_kph - them.min_kph,
+                    "exit_kph": me.exit_kph - them.exit_kph,
+                }
+            )
+        rows.sort(key=lambda row: row["lost_s"], reverse=True)
+        return {"driver": rival.driver_name, "their_lap_time_s": rival.lap_time_s, "segments": rows[:TOP_LOSSES]}
+
+    def _fastest_pass(self, chosen: AnalysedLap, segment: Segment) -> dict[str, object] | None:
+        """The fastest pass of one segment on any car's best lap in the driver's class, against a lap of the driver.
+        In:  chosen   AnalysedLap
+             segment  Segment
+        Out:          dict[str, object] | None  {driver, them: {...}, me_minus_them: {...}, line_wider_m}; None
+                                                when no lap of another car of the class was seen
+        """
+        laps = [lap for lap in self._rivals.best.values() if lap.class_name == self._rivals.player_class]
+        if not laps:
+            return None
+        passes = [(segment_line(lap.line, segment, self._search_m), lap) for lap in laps]
+        them, rival = min(passes, key=lambda item: item[0].time_s)
+        me = dataclasses.asdict(segment_line(chosen.samples, segment, self._search_m))
+        theirs = dataclasses.asdict(them)
+        return {
+            "driver": rival.driver_name,
+            "them": theirs,
+            "me_minus_them": {key: me[key] - theirs[key] for key in me if me[key] is not None},
+            "line_wider_m": None
+            if segment.apex_m is None
+            else line_wider_m(chosen.samples, rival.line, segment.apex_m),
+        }
 
     def _rival(self, driver: str, last_lap: bool) -> RivalLap | None:
         """A lap of another car.
@@ -287,11 +452,17 @@ class SegmentTools:
 
 def _chosen(laps: tuple[AnalysedLap, ...], lap: int) -> AnalysedLap | None:
     """The lap asked for.
-    In:  laps  tuple[AnalysedLap, ...]  oldest first
-         lap   int                      lap number; 0 = the last one
+    In:  laps  tuple[AnalysedLap, ...]  the laps of the session oldest first, then the stored best lap if any
+         lap   int                      lap number; 0 = the last lap of the session, else the stored best lap;
+                                        -1 = the fastest lap
     Out:       AnalysedLap | None       None when it is not analysed
     """
-    return next((entry for entry in reversed(laps) if lap in (0, entry.lap)), None)
+    if lap == BEST_LAP:
+        return _best(laps) if laps else None
+    session = [entry for entry in laps if entry.lap]
+    if lap == 0:
+        return session[-1] if session else next(iter(laps), None)
+    return next((entry for entry in reversed(session) if entry.lap == lap), None)
 
 
 def _best(laps: tuple[AnalysedLap, ...]) -> AnalysedLap:

@@ -40,6 +40,7 @@ class ClaudeAgent(Agent):
     _model         str                               model that answers
     _max_tokens    Mapping[str, int]                 effort -> output token limit, thinking included
     _log           RunLog
+    _context       Callable[[], str]                 one line that says where the driver is now
     """
 
     def __init__(
@@ -51,6 +52,7 @@ class ClaudeAgent(Agent):
         model: str,
         max_tokens: Mapping[str, int],
         log: RunLog,
+        context: Callable[[], str],
     ) -> None:
         """Store the client, the tools with their definitions and the models.
         In:  client        Anthropic
@@ -60,6 +62,7 @@ class ClaudeAgent(Agent):
              model         str                              e.g. "claude-sonnet-5-5"
              max_tokens    Mapping[str, int]                "low" | "medium" | "high" -> output token limit
              log           RunLog
+             context       Callable[[], str]                one line that says where the driver is now
         Out:               None
         """
         self._client: Anthropic = client
@@ -70,6 +73,7 @@ class ClaudeAgent(Agent):
         self._model: str = model
         self._max_tokens: Mapping[str, int] = max_tokens
         self._log: RunLog = log
+        self._context: Callable[[], str] = context
 
     def answer(self, question: str) -> str:
         """Answer one question, without earlier turns.
@@ -96,7 +100,7 @@ class ClaudeAgent(Agent):
         Out:           str  the model's final text; raises when it ends without text (refusal, token limit)
         """
         effort = self._effort(question)
-        messages: list[dict[str, object]] = [{"role": "user", "content": question}]
+        messages: list[dict[str, object]] = [{"role": "user", "content": f"{question}\n\n[{self._context()}]"}]
         while True:
             response = self._ask(effort, messages)
             if response.stop_reason != "tool_use":
