@@ -257,3 +257,13 @@ def test_rival_comparison_of_the_last_laps(tmp_path: Path) -> None:
     assert (lap["laps_compared"], lap["my_lap"]) == ("last", 4)
     assert (lap["my_lap_time_s"], lap["their_lap_time_s"]) == (40.5, 40.0)
     assert sum(s["lost_s"] for s in lap["segments"]) == pytest.approx(0.5, abs=0.02)
+
+
+def test_warming_writes_the_cache_without_asking_for_output(tmp_path: Path) -> None:
+    """Warming sends the cached system prompt and the tools with a zero output limit."""
+    agent, router, main = _agent(tmp_path, "low", SimpleNamespace(usage=SimpleNamespace(to_dict=dict)))
+    agent.warm()
+    assert router.calls == []
+    assert main.calls[0]["max_tokens"] == 0
+    assert main.calls[0]["system"][0]["cache_control"] == {"type": "ephemeral", "ttl": "1h"}
+    assert len(main.calls[0]["tools"]) == 5

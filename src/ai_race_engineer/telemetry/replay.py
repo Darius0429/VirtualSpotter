@@ -78,6 +78,8 @@ CAR_COLUMNS: tuple[str, ...] = (
     "mFuel",
     "mFuelCapacity",
     "mVirtualEnergy",
+    "mLastImpactET",
+    "mLastImpactMagnitude",
     "mFrontTireCompoundName",
     "mRearTireCompoundName",
     *(f"mWheels.mWear.{wheel}" for wheel in range(4)),

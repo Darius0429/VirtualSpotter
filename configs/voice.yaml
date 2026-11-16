@@ -13,6 +13,11 @@ button:
   key_vk: 123                # Windows virtual-key code used when kind is keyboard (123 = F12)
 microphone:
   device: null               # null = Windows default input; else index or name from scripts/setup_voice.py microphones
+stt:
+  engine: whisper            # whisper (local, free) | elevenlabs (API) | vosk (local, weakest)
+elevenlabs_stt:
+  model: scribe_v2
+  language: en
 vosk:
   model_dir: models/vosk-model-en-us-0.22-lgraph
 whisper:
@@ -21,3 +26,19 @@ whisper:
   prompt: >-                 # words the driver uses; the model leans towards them
     Race engineer radio in Le Mans Ultimate. Words used: pit, box, stint, undercut, overcut, lift and coast,
     virtual energy, fuel, tyre temps, pressures, lock up, GT3 traffic, Hypercar, LMP2, P2, turn ten, apex, sector.
+tts:
+  engine: radio              # radio = ElevenLabs voice with the radio sound added locally; print = text on screen only
+  api_key_env: TTS_API_KEY   # environment variable that holds the ElevenLabs key
+  voice_id: JBFqnCBsd6RMkjVDRZzb   # ElevenLabs voice (George, British)
+  model: eleven_flash_v2_5   # the fast model: about 0.4 s for a radio message
+  sample_rate_hz: 22050      # PCM rate asked for and played
+  device: null               # output device; null = Windows default; else index or name from scripts/setup_voice.py
+  radio:                     # the radio sound, added in code so it is the same every time
+    low_hz: 350.0            # the band the radio passes
+    high_hz: 3000.0
+    drive: 6.0               # gain into the soft clipper; higher is more distorted
+    level: 0.6               # loudness of the voice
+    hiss: 0.012              # noise under the voice
+    static_level: 0.25       # loudness of the static bursts
+    static_in_s: 0.22        # static before the voice
+    static_out_s: 0.15       # static after the voice

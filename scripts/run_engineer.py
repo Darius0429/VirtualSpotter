@@ -11,6 +11,7 @@ from pathlib import Path
 import typer
 import yaml
 from anthropic import Anthropic
+from elevenlabs.client import ElevenLabs
 
 from ai_race_engineer.agent.base import Agent, configure_retries
 from ai_race_engineer.agent.claude_agent import ClaudeAgent
@@ -51,6 +52,7 @@ from ai_race_engineer.recorders.timeline_recorder import TimelineRecorder
 from ai_race_engineer.recorders.timeline_store import TimelineStore
 from ai_race_engineer.recorders.track_map_store import TrackMapStore
 from ai_race_engineer.strategy.consumption import ConsumptionTracker
+from ai_race_engineer.strategy.contacts import ContactTracker
 from ai_race_engineer.strategy.corner_card import CardLimits
 from ai_race_engineer.strategy.corner_compare import FindingLimits
 from ai_race_engineer.strategy.lap_history import LapHistory
@@ -80,21 +82,32 @@ from ai_race_engineer.telemetry.replay_wall_clock import ReplayWallClock
 from ai_race_engineer.telemetry.session_clock import SessionClock
 from ai_race_engineer.telemetry.timed_pit_estimate import TimedPitEstimate
 from ai_race_engineer.voice.ask_loop import AskLoop
-from ai_race_engineer.voice.base import TextToSpeech
+from ai_race_engineer.voice.base import SpeechToText, TextToSpeech
 from ai_race_engineer.voice.button import Button
+from ai_race_engineer.voice.elevenlabs_stt import ElevenLabsSpeechToText
+from ai_race_engineer.voice.elevenlabs_tts import ElevenLabsTextToSpeech
 from ai_race_engineer.voice.joystick_button import JoystickButton
 from ai_race_engineer.voice.keyboard_button import KeyboardButton
 from ai_race_engineer.voice.logged_gate import LoggedSpeechGate
 from ai_race_engineer.voice.logged_stt import LoggedSpeechToText
 from ai_race_engineer.voice.logged_tts import LoggedTextToSpeech
 from ai_race_engineer.voice.microphone import Microphone
+from ai_race_engineer.voice.radio_effect import RadioSound
 from ai_race_engineer.voice.speech_loop import SpeechLoop
 from ai_race_engineer.voice.talk_switch import TalkMode, TalkSwitch
 from ai_race_engineer.voice.timed_print_tts import TimedPrintTextToSpeech
 from ai_race_engineer.voice.typed_fallback import or_typed
 from ai_race_engineer.voice.voice_questions import VoiceQuestions
+from ai_race_engineer.voice.vosk_stt import VoskSpeechToText
 from ai_race_engineer.voice.whisper_stt import WhisperSpeechToText
 
+STT: dict[str, Callable[[dict[str, object], int], SpeechToText]] = {
+    "whisper": lambda cfg, rate: WhisperSpeechToText(**cfg["whisper"], sample_rate_hz=rate),
+    "elevenlabs": lambda cfg, rate: ElevenLabsSpeechToText(
+        ElevenLabs(api_key=os.environ[cfg["tts"]["api_key_env"]]), **cfg["elevenlabs_stt"], sample_rate_hz=rate
+    ),
+    "vosk": lambda cfg, rate: VoskSpeechToText(Path(cfg["vosk"]["model_dir"]), rate),
+}
 BUTTONS: dict[str, Callable[[dict[str, object]], Button]] = {
     "joystick": lambda cfg: JoystickButton(cfg["device_name"], cfg["button"]),
     "keyboard": lambda cfg: KeyboardButton(cfg["key_vk"]),
@@ -267,7 +280,8 @@ def main(
         seg_cfg["card"]["search_m"],
     )
     story_cfg = agent_cfg["story"]
-    lap_history = LapHistory(tracker, timeline.entries, story_cfg["loss_s"], story_cfg["trend_laps"])
+    lap_history = LapHistory(tracker, timeline.entries, story_cfg["loss_s"], story_cfg["trend_laps"], run_log)
+    contacts = ContactTracker(timeline.add, lambda: segments.segments, **race_cfg["contacts"])
     story = (
         RaceStory(
             lap_history,
@@ -287,6 +301,7 @@ def main(
         session_log.update,
         tracker.update,
         timeline.update,
+        contacts.update,
         lap_history.update,
         *([story.update] if story else []),
         straight.update,
@@ -319,8 +334,19 @@ def main(
         game_cfg["poll_hz"],
     )
     gate = LoggedSpeechGate(run_log, Priority[speech_cfg["gate"]["urgent_priority"]], speech_cfg["gate"]["max_age_s"])
+    tts_cfg = voice_cfg["tts"]
     tts: TextToSpeech = LoggedTextToSpeech(
-        TimedPrintTextToSpeech(clock.time_s, gate.waited_s, speed), run_log
+        ElevenLabsTextToSpeech(
+            ElevenLabs(api_key=os.environ[tts_cfg["api_key_env"]]),
+            tts_cfg["voice_id"],
+            tts_cfg["model"],
+            tts_cfg["sample_rate_hz"],
+            tts_cfg["device"],
+            RadioSound(**tts_cfg["radio"]),
+        )
+        if tts_cfg["engine"] == "radio"
+        else TimedPrintTextToSpeech(clock.time_s, gate.waited_s, speed),
+        run_log,
     )  # or: PrintTextToSpeech()
     tools = TimelineTools(
         tracker,
@@ -335,7 +361,9 @@ def main(
         **race_cfg["saving"],
     )  # or: PlanTools(...) without timeline and tl_cfg["max_entries"]
     history_tools = HistoryTools(lap_history)
-    energy_tools = EnergyTools(tracker, race_cfg["lift_coast_saving_percent_per_lap"])
+    energy_tools = EnergyTools(
+        tracker, race_cfg["lift_coast_saving_percent_per_lap"], race_cfg["lift_coast_cost_s_per_lap"]
+    )
     traffic_tools = TrafficTools(tracker, race_cfg["traffic_horizon_laps"], race_cfg["traffic_pack_gap_m"])
     configure_retries(agent_cfg["attempts"], agent_cfg["retry_wait_s"], agent_cfg["error_reply"])
     stopping = threading.Event()
@@ -346,20 +374,22 @@ def main(
         for loop in (poller.run, garage.run, keeper.run, health.run, monitor.run, *([story.run] if story else [])):
             threading.Thread(target=keep_running(loop, log_cfg["restart_wait_s"], stopping), daemon=True).start()
         if agent_cfg["api_key_env"] in os.environ:
+            claude = ClaudeAgent(
+                Anthropic(),
+                [
+                    *tools.tools(),
+                    *segment_tools.tools(),
+                    *traffic_tools.tools(),
+                    *energy_tools.tools(),
+                    *history_tools.tools(),
+                ],
+                **agent_cfg["claude"],
+                log=run_log,
+            )
+            threading.Thread(target=claude.warm, daemon=True).start()
             engineer: Agent = TimelineAgent(
                 LoggedAgent(
-                    ClaudeAgent(
-                        Anthropic(),
-                        [
-                            *tools.tools(),
-                            *segment_tools.tools(),
-                            *traffic_tools.tools(),
-                            *energy_tools.tools(),
-                            *history_tools.tools(),
-                        ],
-                        **agent_cfg["claude"],
-                        log=run_log,
-                    ),
+                    claude,
                     run_log,
                     tracker,
                     "claude",
@@ -373,9 +403,7 @@ def main(
                 lambda: VoiceQuestions(
                     BUTTONS[voice_cfg["button"]["kind"]](voice_cfg["button"]),
                     Microphone(voice_cfg["microphone"]["device"], rate),
-                    LoggedSpeechToText(
-                        WhisperSpeechToText(**voice_cfg["whisper"], sample_rate_hz=rate), run_log, rate
-                    ),  # or: VoskSpeechToText(Path(voice_cfg["vosk"]["model_dir"]), rate)
+                    LoggedSpeechToText(STT[voice_cfg["stt"]["engine"]](voice_cfg, rate), run_log, rate),
                     TalkSwitch(TalkMode[voice_cfg["talk"]["mode"]], voice_cfg["talk"]["max_s"]),
                     rate,
                     **voice_cfg["filter"],

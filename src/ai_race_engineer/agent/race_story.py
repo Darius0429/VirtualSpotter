@@ -9,7 +9,7 @@ from ai_race_engineer.telemetry.race_snapshot import RaceSnapshot
 
 FINISH: None = None
 STORY: str = "story"
-SUMMARY_KINDS: tuple[str, ...] = ("session", "flag", "position", "pit", "plan", "note")
+SUMMARY_KINDS: tuple[str, ...] = ("session", "flag", "position", "pit", "plan", "note", "incident")
 
 
 class RaceStory:

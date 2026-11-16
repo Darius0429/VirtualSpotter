@@ -15,6 +15,8 @@ def car_resources(scoring: VehicleScoring, telem: VehicleTelemetry, energy_fract
         fuel_capacity_l=telem.mFuelCapacity,
         virtual_energy=energy_fraction,
         finish_status=scoring.mFinishStatus,
+        last_impact_s=telem.mLastImpactET,
+        last_impact_magnitude=telem.mLastImpactMagnitude,
     )
 
 

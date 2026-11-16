@@ -70,13 +70,14 @@ class TimelineTools(PlanTools):
         fastest laps in class and personal bests ("best_lap"), who became or stopped being a rival ("rival"), the
         race plan and its changes ("plan"), the driver's notes ("note"), earlier questions with their answers
         ("question") and the engineer's own notes of what mattered in the driver's race, lap by lap, with the
-        summary at the flag ("story"). For how the race went, read the "story" entries first.
+        summary at the flag ("story"), and contact between cars or a car going off on its own ("incident").
+        For how the race went, read the "story" entries first.
         Laps are counted as the driver counts them. Give a lap range and a kind to narrow it down;
         when more entries match than fit, the newest are returned and the number of older ones left out is given.
         In:  from_lap  int  first lap of the range; 0 = from the start
              to_lap    int  last lap of the range; 0 = to the end
              kind      str  "session" | "flag" | "position" | "pit" | "best_lap" | "rival" | "plan" | "note" |
-                            "question" | "story"; empty = all
+                            "question" | "story" | "incident"; empty = all
         Out:           dict[str, object]  {"entries": [{"lap", "time_s", "kind", "text"}],
                                           "older_entries_left_out": int}
         """

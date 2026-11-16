@@ -1,5 +1,6 @@
 from collections.abc import Callable
 
+from ai_race_engineer.strategy.pit_time import service_time_s
 from ai_race_engineer.strategy.race_state import RaceTracker
 
 UNAVAILABLE: dict[str, object] = {"available": False}
@@ -10,16 +11,21 @@ class EnergyTools:
     _tracker           RaceTracker           source of the latest race state
     _saving_per_lap    tuple[float, float]   percent of energy per lap that lifting and coasting saves on average,
                                              low and high
+    _cost_s_per_lap    float                 s a lap of lifting and coasting costs
     """
 
-    def __init__(self, tracker: RaceTracker, saving_percent_per_lap: tuple[float, float]) -> None:
-        """Store the state source and the saving that is realistic.
+    def __init__(
+        self, tracker: RaceTracker, saving_percent_per_lap: tuple[float, float], saving_cost_s_per_lap: float
+    ) -> None:
+        """Store the state source and what saving gives and costs.
         In:  tracker                 RaceTracker
              saving_percent_per_lap  tuple[float, float]  percent of energy per lap, low and high
+             saving_cost_s_per_lap   float                s a lap of lifting and coasting costs
         Out:                         None
         """
         self._tracker: RaceTracker = tracker
         self._saving_per_lap: tuple[float, float] = (saving_percent_per_lap[0], saving_percent_per_lap[1])
+        self._cost_s_per_lap: float = saving_cost_s_per_lap
 
     def pit_energy(self) -> dict[str, object]:
         """The energy figure for the driver's pit stop and what saving can and cannot do. The driver sets in the
@@ -27,14 +33,20 @@ class EnergyTools:
         covers the laps after the stop at the current usage. Lifting and coasting saves only a little per lap
         (realistic_saving_percent_per_lap, low and high), so over the laps after the stop the driver can make up at
         most can_save_after_stop_percent: a short fill below leave_pits_with_percent minus that amount does not
-        reach the flag. Without a stop left, the same is given for the laps to the flag: short_by_percent is what
+        reach the flag. one_lap_later is the stop moved back a lap by saving: what must be saved per lap until
+        then and whether that is within reach, the energy that is then not added, how much shorter the stop gets,
+        what the saving costs in lap time, and the net gain in seconds (negative = it costs time; it can still be
+        worth it for track position or to clear traffic). Without a stop left, the same is given for the laps
+        to the flag: short_by_percent is what
         is missing (negative = spare) and can_save_to_flag_percent what saving can make up. Use it for how much
         energy or fuel the driver needs, what to set at the stop, short fuelling and how much to save.
         In:  -
         Out: dict[str, object]  {usage_percent_per_lap, energy_on_board_percent, laps_remaining,
                                 realistic_saving_percent_per_lap, and with a stop left: pit_at_end_of_lap,
                                 energy_at_stop_percent, laps_after_stop, leave_pits_with_percent, add_percent,
-                                can_save_after_stop_percent, shortest_fill_leave_with_percent; without one:
+                                can_save_after_stop_percent, shortest_fill_leave_with_percent, laps_on_board,
+                                one_lap_later: {pit_at_end_of_lap, save_percent_per_lap, for_laps, within_reach,
+                                energy_not_added_percent, stop_shorter_by_s, saving_costs_s, net_gain_s}; without one:
                                 short_by_percent, can_save_to_flag_percent, reachable_by_saving};
                                 {"available": False} without a race state or when the energy use is not known
         """
@@ -68,13 +80,28 @@ class EnergyTools:
         at_stop = max(on_board - to_stop * usage, 0.0)
         leave_with = min(after * usage, 100.0)
         saving = [round(after * low, 2), round(after * high, 2)]
+        add = leave_with - at_stop
+        short = max(usage - at_stop, 0.0)
+        rates = state.pit.rates
+        shorter_s = service_time_s(add / 100, 0.0, rates) - service_time_s(max(add - short, 0.0) / 100, 0.0, rates)
         return {
             **result,
+            "laps_on_board": round(on_board / usage, 1),
+            "one_lap_later": {
+                "pit_at_end_of_lap": projection.pit_lap + 1,
+                "save_percent_per_lap": round(short / (to_stop + 1), 2),
+                "for_laps": round(to_stop + 1, 1),
+                "within_reach": short / (to_stop + 1) <= high,
+                "energy_not_added_percent": round(short, 2),
+                "stop_shorter_by_s": round(shorter_s, 1),
+                "saving_costs_s": round(self._cost_s_per_lap * (to_stop + 1), 1),
+                "net_gain_s": round(shorter_s - self._cost_s_per_lap * (to_stop + 1), 1),
+            },
             "pit_at_end_of_lap": projection.pit_lap,
             "energy_at_stop_percent": round(at_stop, 1),
             "laps_after_stop": round(after, 1),
             "leave_pits_with_percent": round(leave_with, 1),
-            "add_percent": round(leave_with - at_stop, 1),
+            "add_percent": round(add, 1),
             "can_save_after_stop_percent": saving,
             "shortest_fill_leave_with_percent": round(leave_with - saving[1], 1),
         }

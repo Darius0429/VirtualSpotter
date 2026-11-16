@@ -18,6 +18,8 @@ class CarResources:
     fuel_capacity_l  float         litres
     virtual_energy   float | None  fraction 0-1 (None when the game has none)
     finish_status    int           0 none, 1 finished, 2 DNF, 3 DQ
+    last_impact_s          float   s session time of the car's last impact (0 before the first)
+    last_impact_magnitude  float   the game's magnitude of that impact
     """
 
     slot_id: int
@@ -25,6 +27,8 @@ class CarResources:
     fuel_capacity_l: float
     virtual_energy: float | None
     finish_status: int
+    last_impact_s: float = 0.0
+    last_impact_magnitude: float = 0.0
 
 
 @dataclass(frozen=True)

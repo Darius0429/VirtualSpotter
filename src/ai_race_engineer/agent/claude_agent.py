@@ -1,10 +1,11 @@
 import base64
 import json
+import logging
 import time
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 
-from anthropic import Anthropic
+from anthropic import Anthropic, APIError
 from anthropic.types.beta import BetaMessage, BetaToolUseBlock
 
 from ai_race_engineer.agent.base import Agent, answer_with_retries
@@ -22,6 +23,8 @@ EFFORT_FORMAT: dict[str, object] = {
     },
 }
 FALLBACK_BETA: str = "server-side-fallback-2026-07-01"
+
+logger = logging.getLogger(__name__)
 
 
 class ClaudeAgent(Agent):
@@ -75,6 +78,18 @@ class ClaudeAgent(Agent):
         """
         return answer_with_retries(lambda: self._respond(question))
 
+    def warm(self) -> None:
+        """Write the system prompt and the tools to the prompt cache before the first question, so that one is as
+        fast as the later ones; a failure is logged and ignored (call once at start, off the main thread).
+        In:  -
+        Out: None
+        """
+        try:
+            response = self._request("low", [{"role": "user", "content": "radio check"}], 0)
+            self._log.write("conversations", {"event": "warm", "usage": response.usage.to_dict()})
+        except APIError as error:
+            logger.warning("prompt cache not warmed: %s", error)
+
     def _respond(self, question: str) -> str:
         """Pick the effort, then let the main model call tools until it answers.
         In:  question  str
@@ -117,23 +132,31 @@ class ClaudeAgent(Agent):
         Out:           BetaMessage
         """
         start_s = time.monotonic()
-        response = self._client.beta.messages.create(
+        response = self._request(effort, messages, self._max_tokens[effort])
+        self._log.write(
+            "conversations",
+            {"event": "model_end", "reply": response.to_dict(), "latency_s": time.monotonic() - start_s},
+        )
+        return response
+
+    def _request(self, effort: str, messages: list[dict[str, object]], max_tokens: int) -> BetaMessage:
+        """One request to the main model with the cached system prompt and tools.
+        In:  effort      str                      "low" | "medium" | "high"
+             messages    list[dict[str, object]]
+             max_tokens  int                      output token limit; 0 only writes the prompt cache
+        Out:             BetaMessage
+        """
+        cache = {"type": "ephemeral", "ttl": self._cache_ttl}
+        return self._client.beta.messages.create(
             model=self._model,
-            max_tokens=self._max_tokens[effort],
-            system=[
-                {"type": "text", "text": SYSTEM_PROMPT, "cache_control": {"type": "ephemeral", "ttl": self._cache_ttl}}
-            ],
+            max_tokens=max_tokens,
+            system=[{"type": "text", "text": SYSTEM_PROMPT, "cache_control": cache}],
             tools=self._schemas,
             messages=messages,
             output_config={"effort": effort},
             betas=[FALLBACK_BETA],
             fallbacks="default",
         )
-        self._log.write(
-            "conversations",
-            {"event": "model_end", "reply": response.to_dict(), "latency_s": time.monotonic() - start_s},
-        )
-        return response
 
     def _call(self, block: BetaToolUseBlock) -> dict[str, object]:
         """Run one tool call; a failing tool is reported to the model instead of ending the answer.

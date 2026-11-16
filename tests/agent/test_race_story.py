@@ -5,6 +5,7 @@ from ai_race_engineer.agent.energy_tools import EnergyTools
 from ai_race_engineer.agent.history_tools import HistoryTools
 from ai_race_engineer.agent.race_story import RaceStory
 from ai_race_engineer.events.base import Callout
+from ai_race_engineer.strategy.pit_time import PitRates
 from ai_race_engineer.strategy.timeline import TimelineEntry
 from tests.strategy.test_lap_digest import _digests
 
@@ -122,14 +123,21 @@ def test_pit_energy_gives_the_level_to_leave_with_and_what_saving_can_make_up() 
     def tracker(pit_lap: int | None, progress: float, energy: float, remaining: float) -> SimpleNamespace:
         car = SimpleNamespace(slot_id=0, virtual_energy=energy, energy_per_lap=0.045, progress_laps=progress)
         projection = SimpleNamespace(cars={0: SimpleNamespace(pit_lap=pit_lap, laps_remaining=remaining)})
-        return SimpleNamespace(state=SimpleNamespace(player_slot_id=0, cars=[car], projection=projection))
+        pit = SimpleNamespace(rates=PitRates(fuel_rate_l_per_s=2.0, energy_rate_per_s=0.025, scale=1.0, base_s=0.0))
+        return SimpleNamespace(state=SimpleNamespace(player_slot_id=0, cars=[car], projection=projection, pit=pit))
 
-    stop = EnergyTools(tracker(22, 20.0, 0.14, 14.0), (0.25, 0.30)).pit_energy()
+    stop = EnergyTools(tracker(22, 20.0, 0.14, 14.0), (0.25, 0.30), 0.3).pit_energy()
     assert (stop["energy_at_stop_percent"], stop["laps_after_stop"]) == (5.0, 12.0)
     assert (stop["leave_pits_with_percent"], stop["add_percent"]) == (54.0, 49.0)
     assert stop["can_save_after_stop_percent"] == [3.0, 3.6]
     assert stop["shortest_fill_leave_with_percent"] == 50.4
-    flag = EnergyTools(tracker(None, 29.0, 0.205, 5.0), (0.25, 0.30)).pit_energy()
+    later = stop["one_lap_later"]
+    assert (later["pit_at_end_of_lap"], later["for_laps"], later["within_reach"]) == (23, 3.0, True)
+    assert (later["save_percent_per_lap"], later["energy_not_added_percent"]) == (0.0, 0.0)
+    close = EnergyTools(tracker(22, 20.0, 0.132, 14.0), (0.25, 0.30), 0.3).pit_energy()["one_lap_later"]
+    assert (close["save_percent_per_lap"], close["within_reach"], close["energy_not_added_percent"]) == (0.1, True, 0.3)
+    assert (close["stop_shorter_by_s"], close["saving_costs_s"], close["net_gain_s"]) == (0.1, 0.9, -0.8)
+    flag = EnergyTools(tracker(None, 29.0, 0.205, 5.0), (0.25, 0.30), 0.3).pit_energy()
     assert (flag["short_by_percent"], flag["can_save_to_flag_percent"], flag["reachable_by_saving"]) == (
         2.0,
         [1.25, 1.5],

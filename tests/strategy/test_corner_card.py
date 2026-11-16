@@ -129,3 +129,15 @@ def test_lap_shares_and_theoretical_best() -> None:
     fast, slow = _cards(samples), _cards(lap_samples([s.player for s in oval_lap(0)], LENGTH_M, 42.0))
     mixed = (slow[0], fast[1], slow[2])
     assert theoretical_best_s([mixed, slow]) == pytest.approx(slow[0].time_s + fast[1].time_s + slow[2].time_s)
+
+
+def test_braking_for_the_corner_before_is_not_this_corners_brake_point() -> None:
+    """A dab on the brake followed by full throttle belongs to the corner before; a second application after
+    coasting belongs to this corner."""
+    samples = _samples()
+    in_search = (samples.distance_m > 20.0) & (samples.distance_m < 40.0)
+    dab = dataclasses.replace(samples, brake=np.where(in_search, 1.0, samples.brake))
+    assert _cards(dab)[1].entry.brake_point_m == pytest.approx(TURN_1_M[0] - 100.0, abs=4.0)
+    gap = (samples.distance_m > 190.0) & (samples.distance_m < 210.0)
+    twice = dataclasses.replace(samples, brake=np.where(gap, 0.0, samples.brake))
+    assert _cards(twice)[1].entry.brake_point_m == pytest.approx(TURN_1_M[0] - 100.0, abs=4.0)

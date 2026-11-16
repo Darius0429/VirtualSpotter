@@ -1,16 +1,30 @@
+import os
 from collections.abc import Callable
 from pathlib import Path
 
 import typer
 import yaml
+from elevenlabs.client import ElevenLabs
 
+from ai_race_engineer.voice.base import SpeechToText
 from ai_race_engineer.voice.button import Button
+from ai_race_engineer.voice.compare_stt import CompareSpeechToText
+from ai_race_engineer.voice.elevenlabs_stt import ElevenLabsSpeechToText
 from ai_race_engineer.voice.joystick_button import JoystickButton, joystick_names, wait_for_press
 from ai_race_engineer.voice.keyboard_button import KeyboardButton
 from ai_race_engineer.voice.microphone import Microphone, input_devices
 from ai_race_engineer.voice.talk_switch import TalkMode, TalkSwitch
 from ai_race_engineer.voice.voice_questions import VoiceQuestions
 from ai_race_engineer.voice.vosk_stt import VoskSpeechToText
+from ai_race_engineer.voice.whisper_stt import WhisperSpeechToText
+
+STT: dict[str, Callable[[dict[str, object], int], SpeechToText]] = {
+    "whisper": lambda cfg, rate: WhisperSpeechToText(**cfg["whisper"], sample_rate_hz=rate),
+    "elevenlabs": lambda cfg, rate: ElevenLabsSpeechToText(
+        ElevenLabs(api_key=os.environ[cfg["tts"]["api_key_env"]]), **cfg["elevenlabs_stt"], sample_rate_hz=rate
+    ),
+    "vosk": lambda cfg, rate: VoskSpeechToText(Path(cfg["vosk"]["model_dir"]), rate),
+}
 
 BUTTONS: dict[str, Callable[[dict[str, object]], Button]] = {
     "joystick": lambda cfg: JoystickButton(cfg["device_name"], cfg["button"]),
@@ -43,9 +57,11 @@ def button() -> None:
 
 
 @app.command()
-def listen(voice: Path = Path("configs/voice.yaml")) -> None:
+def listen(voice: Path = Path("configs/voice.yaml"), compare: bool = False) -> None:
     """Test the talk button, microphone and speech-to-text: print every question heard until Ctrl+C.
-    In:  voice  Path  voice-input config YAML
+    In:  voice    Path  voice-input config YAML
+         compare  bool  run every speech-to-text engine on each question and print what each heard and how long
+                        it took, instead of only the configured one
     Out: None
     """
     cfg = yaml.safe_load(voice.read_text())
@@ -53,7 +69,9 @@ def listen(voice: Path = Path("configs/voice.yaml")) -> None:
     questions = VoiceQuestions(
         BUTTONS[cfg["button"]["kind"]](cfg["button"]),
         Microphone(cfg["microphone"]["device"], rate),
-        VoskSpeechToText(Path(cfg["vosk"]["model_dir"]), rate),
+        CompareSpeechToText({name: build(cfg, rate) for name, build in STT.items()})
+        if compare
+        else STT[cfg["stt"]["engine"]](cfg, rate),
         TalkSwitch(TalkMode[cfg["talk"]["mode"]], cfg["talk"]["max_s"]),
         rate,
         **cfg["filter"],

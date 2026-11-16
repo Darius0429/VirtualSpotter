@@ -3,7 +3,13 @@ projection_period_s: 1.0     # session seconds between recomputations
 traffic_horizon_laps: 5.0    # traffic the player meets within this many laps is reported when asked
 traffic_callout_laps: 1.0    # traffic reached within this many laps is said without being asked
 traffic_pack_gap_m: 100.0    # cars no further apart than this on the road are one pack
-lift_coast_saving_percent_per_lap: [0.25, 0.30]   # energy that lifting and coasting saves per lap on average, low and high
+lift_coast_saving_percent_per_lap: [0.10, 0.30]   # energy that lifting and coasting saves per lap, low and high
+lift_coast_cost_s_per_lap: 0.3   # lap time a lap of lifting and coasting costs
+contacts:                    # contact found from the impacts the game reports for every car
+  min_magnitude: 100.0       # impact magnitude from which a hit counts (kerbs and light touches are below)
+  hard_magnitude: 500.0      # a hit of another car with no car near is kept from this magnitude
+  near_m: 12.0               # another car within this distance is the one that was touched
+  hold_s: 3.0                # further impacts of the same car within this time are the same contact
 fuel_margin_laps: 0.2        # laps the fuel may be short of the energy before 'fuel runs out first'
 strategy_start_laps: 5       # laps the player completes before measured pace and usage replace the pre-race
                              # figures and before rival callouts start

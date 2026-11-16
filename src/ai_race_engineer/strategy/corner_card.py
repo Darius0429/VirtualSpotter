@@ -207,7 +207,9 @@ def segment_card(samples: LapSamples, segment: Segment, search_from_m: float, li
 def _entry(
     samples: LapSamples, segment: Segment, search: int, slowest: int, first: int, last: int, limits: CardLimits
 ) -> CornerEntry | None:
-    """The braking for a corner.
+    """The braking for a corner: the braking that leads to its minimum speed, back to where the driver was last at
+    full throttle. A brake application for the corner before, followed by full throttle, is not part of it; a
+    second application after coasting is.
     In:  samples  LapSamples
          segment  Segment     a corner
          search   int         sample from which the braking is looked for
@@ -221,7 +223,11 @@ def _entry(
     braked = np.flatnonzero(samples.brake[search : slowest + 1] > limits.brake_on) + search
     if not braked.size:
         return None
-    on, off = int(braked[0]), int(braked[-1])
+    on, off = int(braked[-1]), int(braked[-1])
+    for sample in braked[::-1]:
+        if samples.throttle[sample:on].max(initial=0.0) >= limits.full_throttle:
+            break
+        on = int(sample)
     lift = on
     while lift > search and samples.throttle[lift - 1] < limits.full_throttle:
         lift -= 1
