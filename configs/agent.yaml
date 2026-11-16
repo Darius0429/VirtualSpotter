@@ -2,7 +2,14 @@ attempts: 3                  # tries per question when the model or the network 
 retry_wait_s: 2.0            # s between two tries
 error_reply: I could not get that, say again.
 api_key_env: ANTHROPIC_API_KEY   # questions are disabled when this environment variable is not set
+story:                             # the engineer's notes of the race, written by a model in the background
+  enabled: true                    # false = no model call that the driver did not ask for
+  notes_model: claude-haiku-5-5    # after every race lap: what mattered for the driver
+  summary_model: claude-sonnet-5-5 # at the flag: the spoken summary
+  loss_s: 3.0                      # s a lap must be slower than a car's pace to be marked as time lost
+  trend_laps: 5                    # laps back over which the gap trend is given
 claude:
+  cache_ttl: 1h                    # how long the prompt stays cached after its last use: 5m | 1h
   router_model: claude-haiku-5-5   # picks the reasoning effort of each question
   model: claude-sonnet-5-5         # answers with the tools
   max_tokens:                      # output token limit per effort, thinking included

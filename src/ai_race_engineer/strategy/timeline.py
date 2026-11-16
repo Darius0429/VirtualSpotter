@@ -14,7 +14,8 @@ class TimelineEntry:
     """One event of the session.
     time_s  float   s session time
     lap     int     the player's lap in progress, 1-based (completed laps + 1)
-    kind    str     "session" | "flag" | "position" | "pit" | "best_lap" | "rival" | "plan" | "note" | "question"
+    kind    str     "session" | "flag" | "position" | "pit" | "best_lap" | "rival" | "plan" | "note" | "question" |
+                    "story"
     text    str     short sentence the agent can quote
     fields  Fields  structured values, units in the key suffix; "event" names the sub-kind
     """

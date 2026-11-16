@@ -27,6 +27,7 @@ def test_fastest_full_lap_of_another_car_is_kept() -> None:
     _drive(tracker, (2, 40.0, False), (3, 39.0, False), (4, 39.5, False))
     lap = tracker.best[1]
     assert (lap.driver_name, lap.lap_time_s) == ("Rival One", 39.0)
+    assert tracker.last[1].lap_time_s == 39.5
     assert lap.line.distance_m[-1] == pytest.approx(LENGTH_M)
     assert lap.line.time_s[-1] == pytest.approx(39.0)
     assert 0 not in tracker.best
@@ -40,7 +41,7 @@ def test_pit_laps_and_untimed_laps_are_left_out_and_a_new_session_starts_empty()
     _drive(tracker, (4, 40.0, False))
     assert tracker.best[1].lap_time_s == 40.0
     _drive(tracker, (0, None, True))
-    assert tracker.best == {}
+    assert (tracker.best, tracker.last) == ({}, {})
 
 
 def test_segment_figures_from_line_and_speed() -> None:

@@ -48,13 +48,13 @@ class FastestLap(Event):
                 self._player_best_s = player_best_s
                 return Callout(
                     "fastest_lap",
-                    f"You set the fastest lap overall, {lap_time_text(holder.best_lap_s)}",
+                    f"You set the fastest time of the session with a {lap_time_text(holder.best_lap_s)}",
                     Priority.INFO,
                     facts,
                 )
             return Callout(
                 "fastest_lap",
-                f"Fastest lap overall: {holder.driver_name}, {holder.class_name}, {lap_time_text(holder.best_lap_s)}",
+                f"{holder.driver_name} set the fastest time of the session with a {lap_time_text(holder.best_lap_s)}",
                 Priority.INFO,
                 facts,
             )
@@ -62,7 +62,7 @@ class FastestLap(Event):
             self._player_best_s = player_best_s
             return Callout(
                 "personal_best",
-                f"Personal best, {lap_time_text(player_best_s)}",
+                f"You set your fastest lap with a {lap_time_text(player_best_s)}",
                 Priority.INFO,
                 {"lap_s": player_best_s},
             )

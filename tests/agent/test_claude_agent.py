@@ -68,8 +68,8 @@ def _tool_use(name: str, **arguments: object) -> SimpleNamespace:
 
 
 def _trackers() -> tuple[SegmentTracker, RivalLineTracker]:
-    """Segment tracker after three laps of the oval: lap 2 (40.0 s, braked 20 m earlier) and lap 3 (39.5 s)
-    are analysed. Rival One drives the same laps 3 m further in x and 0.5 s faster.
+    """Segment tracker after four laps of the oval: lap 2 (40.0 s, braked 20 m earlier), lap 3 (39.5 s) and
+    lap 4 (40.5 s) are analysed. Rival One drives the same laps 3 m further in x and 0.5 s faster.
     In:  -
     Out: tuple[SegmentTracker, RivalLineTracker]
     """
@@ -92,6 +92,7 @@ def _trackers() -> tuple[SegmentTracker, RivalLineTracker]:
         (1, 41.0, 120.0),
         (2, 40.0, 100.0),
         (3, 39.5, 100.0),
+        (4, 40.5, 100.0),
     ):
         rival_s = None if last_lap_s is None else last_lap_s - 0.5
         lap = oval_lap(completed_laps, last_lap_s, brake_zone_m=brake_zone_m)
@@ -114,6 +115,7 @@ def _agent(tmp_path: Path, effort: str, *replies: SimpleNamespace) -> tuple[Clau
     agent = ClaudeAgent(
         client,
         _tools(tmp_path).tools(),
+        cache_ttl="1h",
         router_model="claude-haiku-5-5",
         model="claude-sonnet-5-5",
         max_tokens=MAX_TOKENS,
@@ -153,8 +155,15 @@ def test_question_is_routed_answered_with_a_tool_and_spoken(
     assert router.calls[0]["output_config"]["format"]["type"] == "json_schema"
     assert [call["output_config"] for call in main.calls] == [{"effort": effort}] * 2
     assert main.calls[0]["max_tokens"] == MAX_TOKENS[effort]
-    assert main.calls[0]["system"][0]["cache_control"] == {"type": "ephemeral"}
-    assert all(schema["strict"] for schema in main.calls[0]["tools"])
+    assert main.calls[0]["system"][0]["cache_control"] == {"type": "ephemeral", "ttl": "1h"}
+    strict = {schema["name"]: schema["strict"] for schema in main.calls[0]["tools"]}
+    assert strict == {
+        "lap_losses": True,
+        "corner_analysis": True,
+        "corner_plot": True,
+        "rival_comparison": True,
+        "car_health": False,
+    }
     result = main.calls[1]["messages"][2]["content"][0]
     assert (result["type"], result["tool_use_id"], result["is_error"]) == ("tool_result", "call_1", False)
     output = json.loads(result["content"])
@@ -166,7 +175,7 @@ def test_question_is_routed_answered_with_a_tool_and_spoken(
         assert output["vs_best"]["lost_s"] > 0.0
         assert output["entry"]["brake_point_m"] < output["mid"]["min_speed_m"]
     else:
-        assert (output["lap"], output["best_lap"], output["analysed_laps"]) == (2, 3, [2, 3])
+        assert (output["lap"], output["best_lap"], output["analysed_laps"]) == (2, 3, [2, 3, 4])
         assert output["theoretical_best_s"] <= output["best_lap_time_s"]
         assert output["segments"][0]["lost_s"] >= output["segments"][-1]["lost_s"]
         assert {s["name"] for s in output["segments"]} >= {"turn 1", "turn 2", "straight 1"}
@@ -177,7 +186,7 @@ def test_corner_plot_is_saved_and_shown_to_the_model(tmp_path: Path) -> None:
     agent, _, main = _agent(
         tmp_path,
         "medium",
-        _reply("tool_use", _tool_use("corner_plot", corner="Turn 1", lap=2, against="")),
+        _reply("tool_use", _tool_use("corner_plot", corner="Turn 1", lap=2, against="", their_last_lap=False)),
         _reply("end_turn", _text("Brake later.")),
     )
     assert agent.answer("Why am I slow in turn 1?") == "Brake later."
@@ -191,9 +200,9 @@ def test_unknown_corner_or_lap_is_unavailable(tmp_path: Path) -> None:
     """A segment the track does not have or a lap that was not analysed gives no data."""
     tools = _tools(tmp_path)
     assert tools.corner_analysis("turn 9", 0) == {"available": False}
-    assert tools.corner_plot("turn 1", 7, "") == {"available": False}
-    assert tools.corner_plot("turn 1", 0, "nobody") == {"available": False}
-    assert tools.rival_comparison("nobody", "") == {"available": False, "drivers": ["Rival One"]}
+    assert tools.corner_plot("turn 1", 7, "", False) == {"available": False}
+    assert tools.corner_plot("turn 1", 0, "nobody", False) == {"available": False}
+    assert tools.rival_comparison("nobody", "", False) == {"available": False, "drivers": ["Rival One"]}
     assert tools.lap_losses(7) == {"available": False}
 
 
@@ -229,13 +238,22 @@ def test_rival_comparison_ranks_the_lap_and_details_a_corner(tmp_path: Path) -> 
     """Against the fastest car of the class: the segments by time lost, and for one corner both cars' figures, the
     difference and the line; the plot against the rival is saved under its name."""
     tools = _tools(tmp_path)
-    lap = tools.rival_comparison("", "")
+    lap = tools.rival_comparison("", "", False)
     assert (lap["driver"], lap["their_lap_time_s"], lap["my_lap"]) == ("Rival One", 39.0, 3)
     assert sum(s["lost_s"] for s in lap["segments"]) == pytest.approx(0.5, abs=0.02)
     assert lap["segments"][0]["lost_s"] >= lap["segments"][-1]["lost_s"]
-    corner = tools.rival_comparison("rival", "Turn 1")
+    corner = tools.rival_comparison("rival", "Turn 1", False)
     assert corner["name"] == "turn 1"
     assert corner["difference"]["min_kph"] == pytest.approx(0.0, abs=0.1)
     assert corner["me"]["slowing_point_m"] == pytest.approx(corner["them"]["slowing_point_m"], abs=4.0)
     assert abs(corner["line_wider_m"]) == pytest.approx(3.0, abs=0.5)
-    assert tools.corner_plot("turn 1", 0, "rival").name == "lap 3 turn 1 against Rival One.png"
+    assert tools.corner_plot("turn 1", 3, "rival", False).name == "lap 3 turn 1 against Rival One best lap.png"
+    assert tools.corner_plot("turn 1", 0, "rival", True).name == "lap 4 turn 1 against Rival One last lap.png"
+
+
+def test_rival_comparison_of_the_last_laps(tmp_path: Path) -> None:
+    """With last_lap the driver's last analysed lap is compared with the other car's last full lap."""
+    lap = _tools(tmp_path).rival_comparison("", "", True)
+    assert (lap["laps_compared"], lap["my_lap"]) == ("last", 4)
+    assert (lap["my_lap_time_s"], lap["their_lap_time_s"]) == (40.5, 40.0)
+    assert sum(s["lost_s"] for s in lap["segments"]) == pytest.approx(0.5, abs=0.02)

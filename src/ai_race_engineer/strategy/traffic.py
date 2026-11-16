@@ -3,6 +3,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 from ai_race_engineer.strategy.race_finish import CarInput
+from ai_race_engineer.telemetry.snapshot import VehicleState
 
 
 @dataclass(frozen=True)
@@ -81,3 +82,83 @@ def _within(cars: Sequence[TrafficCar], horizon_laps: float) -> tuple[TrafficCar
     Out:               tuple[TrafficCar, ...]
     """
     return tuple(sorted((c for c in cars if c.laps_to_meet <= horizon_laps), key=lambda c: c.time_to_meet_s))
+
+
+@dataclass(frozen=True)
+class TrafficPack:
+    """Slower cars close together on the road ahead that the player is about to reach.
+    backmarkers          bool             True: cars of the player's own class being lapped; False: another class
+    class_name           str
+    slot_ids             tuple[int, ...]  cars of the pack, nearest first
+    gap_s                float            s on the road to the nearest car now
+    laps_to_meet         float            laps the player drives until the nearest car is reached
+    time_to_meet_s       float            s until the nearest car is reached
+    meet_lap             int              lap number on which that happens, in the driver's counting
+    meet_lap_distance_m  float            m from the start/finish line
+    """
+
+    backmarkers: bool
+    class_name: str
+    slot_ids: tuple[int, ...]
+    gap_s: float
+    laps_to_meet: float
+    time_to_meet_s: float
+    meet_lap: int
+    meet_lap_distance_m: float
+
+
+def packs_ahead(
+    player: CarInput, others: Sequence[CarInput], track_length_m: float, horizon_laps: float, pack_gap_m: float
+) -> tuple[TrafficPack, ...]:
+    """Slower cars ahead on the road that the player reaches within a horizon at the current paces, grouped into
+    packs: cars of another class, and cars of the player's own class that are behind in the race and so are being
+    lapped. Cars follow each other in one pack while they are of the same kind and no further apart than pack_gap_m.
+    Cars in the pits or finished are left out.
+    In:  player          CarInput
+         others          Sequence[CarInput]  all other cars
+         track_length_m  float               m
+         horizon_laps    float               laps of the player within which a car must be reached
+         pack_gap_m      float               m two cars may be apart on the road and still be one pack
+    Out:                 tuple[TrafficPack, ...]  nearest first
+    """
+    slower = [
+        o
+        for o in others
+        if o.lap_time_s > player.lap_time_s
+        and not o.in_pits
+        and not o.finished
+        and (o.class_name != player.class_name or o.progress_laps < player.progress_laps)
+    ]
+    meetings = _within([_meeting(player, o, True, track_length_m) for o in slower], horizon_laps)
+    on_road = sorted(meetings, key=lambda car: car.gap_s)
+    groups: list[list[TrafficCar]] = []
+    for car in on_road:
+        last = groups[-1][-1] if groups else None
+        apart_m = None if last is None else (car.gap_s - last.gap_s) / player.lap_time_s * track_length_m
+        if last is not None and last.class_name == car.class_name and apart_m <= pack_gap_m:
+            groups[-1].append(car)
+        else:
+            groups.append([car])
+    return tuple(
+        TrafficPack(
+            backmarkers=group[0].class_name == player.class_name,
+            class_name=group[0].class_name,
+            slot_ids=tuple(car.slot_id for car in group),
+            gap_s=group[0].gap_s,
+            laps_to_meet=group[0].laps_to_meet,
+            time_to_meet_s=group[0].time_to_meet_s,
+            meet_lap=group[0].meet_lap,
+            meet_lap_distance_m=group[0].meet_lap_distance_m,
+        )
+        for group in groups
+    )
+
+
+def cars_on_track(cars: Sequence[CarInput], vehicles: Sequence[VehicleState]) -> list[CarInput]:
+    """The cars that are not standing in their garage; a parked car is no traffic.
+    In:  cars      Sequence[CarInput]
+         vehicles  Sequence[VehicleState]  all cars of the same snapshot
+    Out:           list[CarInput]
+    """
+    parked = {vehicle.slot_id for vehicle in vehicles if vehicle.in_garage}
+    return [car for car in cars if car.slot_id not in parked]

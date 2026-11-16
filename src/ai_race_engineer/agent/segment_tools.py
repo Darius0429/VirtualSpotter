@@ -136,8 +136,8 @@ class SegmentTools:
             }
         )
 
-    def corner_plot(self, corner: str, lap: int, against: str) -> Path | dict[str, object]:
-        """Draw one corner of one lap against the driver's best lap, or against the fastest lap of another car,
+    def corner_plot(self, corner: str, lap: int, against: str, their_last_lap: bool) -> Path | dict[str, object]:
+        """Draw one corner of one lap against the driver's best lap, or against a lap of another car,
         and look at the picture: on the left the driven line, on the right the speed over the lap distance, both
         coloured red where the driver braked, grey where the car coasted and green on the throttle. The lap it is
         compared with is the dashed black line, the orange line marks the apex and the purple line is the time lost
@@ -146,43 +146,51 @@ class SegmentTools:
         In:  corner   str  name of the corner, e.g. "turn 3" or "Arnage"
              lap      int  lap number as the driver counts it; 0 = the last analysed lap
              against  str  driver of another car, or part of the name; empty = the driver's own best lap
+             their_last_lap  bool  with another car: true = its last full lap, false = its fastest lap
         Out:          Path | dict[str, object]  the PNG file; {"available": False} when the lap is not analysed, the
                                                 track has no such segment or no lap of that car was seen
         """
         laps = self._tracker.laps
         chosen = _chosen(laps, lap)
         index = _index(self._tracker.segments, corner)
-        rival = self._rival(against) if against else None
+        rival = self._rival(against, their_last_lap) if against else None
         if chosen is None or index is None or (against and rival is None):
             return UNAVAILABLE
         best = _best(laps)
-        reference, name = (best.samples, f"lap {best.lap}") if rival is None else (rival.line, rival.driver_name)
+        which = "last lap" if their_last_lap else "best lap"
+        reference, name = (
+            (best.samples, f"lap {best.lap}") if rival is None else (rival.line, f"{rival.driver_name} {which}")
+        )
         return self._plotter.save(chosen.samples, reference, self._tracker.segments[index], chosen.lap, name)
 
-    def rival_comparison(self, driver: str, corner: str) -> dict[str, object]:
-        """The driver's best lap against the fastest lap seen of another car, from the line and the speed of both
-        (the game gives no pedals of other cars). Without a corner: every corner and straight with the time lost to
+    def rival_comparison(self, driver: str, corner: str, last_lap: bool) -> dict[str, object]:
+        """The driver against another car, from the line and the speed of both (the game gives no pedals of other
+        cars): either the best lap of each, or the last analysed lap of the driver against the last full lap of
+        the other car, which shows what is happening in the race now. The two last laps need not be the same race
+        lap: laps through the pits are skipped. Without a corner: every corner and straight with the time lost to
         that car, most lost first, and the difference in minimum and exit speed. With a corner: for both cars the
         time, the entry, minimum, exit and top speed, where the car starts slowing and where it is slowest, and how
         much wider the driver's line is at the apex. Every difference is the driver minus the other car. Use it to
         see where a rival is faster and what they do differently; draw it with corner_plot and against.
-        In:  driver  str  driver of the other car, or part of the name; empty = the fastest lap in the driver's class
-             corner  str  name of a segment, e.g. "turn 3"; empty = all segments
+        In:  driver    str   driver of the other car, or part of the name; empty = the fastest in the driver's class
+             corner    str   name of a segment, e.g. "turn 3"; empty = all segments
+             last_lap  bool  true = the last lap of both, false = the best lap of both
         Out:         dict[str, object]  {driver, class, their_lap_time_s, my_lap, my_lap_time_s, segments: [{name,
                                         lost_s, min_kph, exit_kph}]} or, with a corner, {..., name, me: {...},
                                         them: {...}, difference: {...}, line_wider_m}; {"available": False, "drivers":
                                         [names with a lap]} when the driver has no analysed lap, no lap of that
                                         car was seen or the track has no such segment
         """
-        rival = self._rival(driver)
+        rival = self._rival(driver, last_lap)
         index = _index(self._tracker.segments, corner) if corner else None
         if not self._tracker.laps or rival is None or (corner and index is None):
             return {**UNAVAILABLE, "drivers": sorted(lap.driver_name for lap in self._rivals.best.values())}
-        best = _best(self._tracker.laps)
+        best = self._tracker.laps[-1] if last_lap else _best(self._tracker.laps)
         segments = self._tracker.segments
         mine = [segment_line(best.samples, segment, self._search_m) for segment in segments]
         theirs = [segment_line(rival.line, segment, self._search_m) for segment in segments]
         head = {
+            "laps_compared": "last" if last_lap else "best",
             "driver": rival.driver_name,
             "class": rival.class_name,
             "their_lap_time_s": rival.lap_time_s,
@@ -249,18 +257,21 @@ class SegmentTools:
         """
         return [self.lap_losses, self.corner_analysis, self.corner_plot, self.rival_comparison, self.car_health]
 
-    def _rival(self, driver: str) -> RivalLap | None:
-        """The fastest lap of another car.
-        In:  driver  str  driver name or part of it, any case; empty = the fastest lap in the player's class
-        Out:         RivalLap | None  None when no such lap was seen
+    def _rival(self, driver: str, last_lap: bool) -> RivalLap | None:
+        """A lap of another car.
+        In:  driver    str   driver name or part of it, any case; empty = the car with the fastest lap in the
+                             player's class
+             last_lap  bool  True = the car's last full lap, False = its fastest
+        Out:           RivalLap | None  None when no such lap was seen
         """
         wanted = driver.strip().lower()
-        laps = [
-            lap
-            for lap in self._rivals.best.values()
+        slots = [
+            slot
+            for slot, lap in self._rivals.best.items()
             if (wanted in lap.driver_name.lower() if wanted else lap.class_name == self._rivals.player_class)
         ]
-        return min(laps, key=lambda lap: lap.lap_time_s, default=None)
+        slot = min(slots, key=lambda slot: self._rivals.best[slot].lap_time_s, default=None)
+        return None if slot is None else (self._rivals.last if last_lap else self._rivals.best)[slot]
 
     def _delta(self, chosen: AnalysedLap, best: AnalysedLap, index: int) -> SegmentDelta:
         """One segment of a lap against the best lap.

@@ -30,7 +30,7 @@ def test_rival_overall_best(make_vehicle: Callable[..., VehicleState], make_snap
     assert callout is not None
     assert callout.kind == "fastest_lap"
     assert callout.priority == Priority.INFO
-    assert callout.text == "Fastest lap overall: Ann, GT3, 1:38.5"
+    assert callout.text == "Ann set the fastest time of the session with a 1:38.5"
     assert callout.facts == {"driver": "Ann", "class_name": "GT3", "lap_s": 98.5, "is_player": 0}
 
 
@@ -43,7 +43,7 @@ def test_player_overall_best_no_pb_after(
     me = make_vehicle(slot_id=0, is_player=True, best_lap_s=98.0)
     callout = event.check(make_snapshot(me, [rival]), 1.0)
     assert callout is not None
-    assert callout.text == "You set the fastest lap overall, 1:38.0"
+    assert callout.text == "You set the fastest time of the session with a 1:38.0"
     assert callout.facts["is_player"] == 1
     assert event.check(make_snapshot(me, [rival]), 2.0) is None
 
@@ -55,7 +55,7 @@ def test_player_pb_only(make_vehicle: Callable[..., VehicleState], make_snapshot
     callout = event.check(make_snapshot(make_vehicle(slot_id=0, is_player=True, best_lap_s=99.0), [rival]), 1.0)
     assert callout is not None
     assert callout.kind == "personal_best"
-    assert callout.text == "Personal best, 1:39.0"
+    assert callout.text == "You set your fastest lap with a 1:39.0"
     assert callout.facts == {"lap_s": 99.0}
 
 

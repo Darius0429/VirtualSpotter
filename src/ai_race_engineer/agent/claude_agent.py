@@ -32,6 +32,7 @@ class ClaudeAgent(Agent):
     _client        Anthropic
     _tools         dict[str, Callable[..., object]]  tool name -> function
     _schemas       list[dict[str, object]]           strict tool definitions, in a fixed order
+    _cache_ttl     str                               "5m" | "1h": how long the prompt stays cached
     _router_model  str                               model that picks the effort
     _model         str                               model that answers
     _max_tokens    Mapping[str, int]                 effort -> output token limit, thinking included
@@ -42,6 +43,7 @@ class ClaudeAgent(Agent):
         self,
         client: Anthropic,
         tools: Sequence[Callable[..., object]],
+        cache_ttl: str,
         router_model: str,
         model: str,
         max_tokens: Mapping[str, int],
@@ -50,6 +52,7 @@ class ClaudeAgent(Agent):
         """Store the client, the tools with their definitions and the models.
         In:  client        Anthropic
              tools         Sequence[Callable[..., object]]  typed functions with a docstring
+             cache_ttl     str                              "5m" | "1h": how long the prompt stays cached
              router_model  str                              e.g. "claude-haiku-5-5"
              model         str                              e.g. "claude-sonnet-5-5"
              max_tokens    Mapping[str, int]                "low" | "medium" | "high" -> output token limit
@@ -59,6 +62,7 @@ class ClaudeAgent(Agent):
         self._client: Anthropic = client
         self._tools: dict[str, Callable[..., object]] = {tool.__name__: tool for tool in tools}
         self._schemas: list[dict[str, object]] = [tool_schema(tool) for tool in tools]
+        self._cache_ttl: str = cache_ttl
         self._router_model: str = router_model
         self._model: str = model
         self._max_tokens: Mapping[str, int] = max_tokens
@@ -116,7 +120,9 @@ class ClaudeAgent(Agent):
         response = self._client.beta.messages.create(
             model=self._model,
             max_tokens=self._max_tokens[effort],
-            system=[{"type": "text", "text": SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}}],
+            system=[
+                {"type": "text", "text": SYSTEM_PROMPT, "cache_control": {"type": "ephemeral", "ttl": self._cache_ttl}}
+            ],
             tools=self._schemas,
             messages=messages,
             output_config={"effort": effort},

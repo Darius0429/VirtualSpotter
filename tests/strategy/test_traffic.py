@@ -1,7 +1,7 @@
 import pytest
 
 from ai_race_engineer.strategy.race_finish import CarInput
-from ai_race_engineer.strategy.traffic import find_traffic
+from ai_race_engineer.strategy.traffic import find_traffic, packs_ahead
 
 TRACK_M: float = 5000.0
 
@@ -75,3 +75,32 @@ def test_cars_that_are_not_traffic() -> None:
         _car(4, 18.6, 100.0),
     ]
     assert find_traffic(PLAYER, others, TRACK_M, 3.0) == ((), ())
+
+
+def test_slower_cars_ahead_are_grouped_into_packs() -> None:
+    """Two GT3 cars 50 m apart are one pack, a third 500 m further is its own; the nearest pack comes first with the
+    meeting of its first car."""
+    others = [_car(5, 18.60, 110.0), _car(6, 18.61, 110.0), _car(7, 18.71, 110.0)]
+    first, second = packs_ahead(PLAYER, others, TRACK_M, 3.0, 100.0)
+    assert (first.slot_ids, first.class_name, first.backmarkers) == ((5, 6), "GT3", False)
+    assert first.laps_to_meet == pytest.approx(1.1)
+    assert first.meet_lap == 22
+    assert second.slot_ids == (7,)
+
+
+def test_lapped_cars_of_the_own_class_are_backmarkers() -> None:
+    """A slower car of the player's class that is behind in the race is a backmarker; one ahead in the race, a
+    faster one and one in the pits are not traffic."""
+    others = [
+        _car(5, 18.6, 104.0, "Hyper"),
+        _car(6, 20.6, 104.0, "Hyper"),
+        _car(7, 18.6, 99.0, "Hyper"),
+        _car(8, 18.6, 110.0, in_pits=True),
+    ]
+    (pack,) = packs_ahead(PLAYER, others, TRACK_M, 5.0, 100.0)
+    assert (pack.slot_ids, pack.backmarkers, pack.class_name) == ((5,), True, "Hyper")
+
+
+def test_packs_beyond_the_horizon_are_left_out() -> None:
+    """A car reached after 1.1 laps is not within one lap."""
+    assert packs_ahead(PLAYER, [_car(5, 18.6, 110.0)], TRACK_M, 1.0, 100.0) == ()

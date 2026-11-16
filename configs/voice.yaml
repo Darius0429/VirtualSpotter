@@ -1,4 +1,4 @@
-sample_rate_hz: 16000        # Vosk models are 16 kHz mono
+sample_rate_hz: 16000        # Whisper and the Vosk models are 16 kHz mono
 poll_hz: 50                  # button polling
 talk:
   mode: HOLD                 # HOLD = record while held; TOGGLE = press to start, press to stop
@@ -15,3 +15,9 @@ microphone:
   device: null               # null = Windows default input; else index or name from scripts/setup_voice.py microphones
 vosk:
   model_dir: models/vosk-model-en-us-0.22-lgraph
+whisper:
+  model: base.en             # faster-whisper model, downloaded on first use; small.en is 3x slower and no better here
+  compute_type: int8
+  prompt: >-                 # words the driver uses; the model leans towards them
+    Race engineer radio in Le Mans Ultimate. Words used: pit, box, stint, undercut, overcut, lift and coast,
+    virtual energy, fuel, tyre temps, pressures, lock up, GT3 traffic, Hypercar, LMP2, P2, turn ten, apex, sector.

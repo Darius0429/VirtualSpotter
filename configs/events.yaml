@@ -1,10 +1,13 @@
 low_fuel_laps: 2.0
 low_energy_laps: 2.0
-enabled:                     # SessionType names
-  fastest_lap: [PRACTICE, QUALIFY, RACE]
-  sector_comparison: [PRACTICE, QUALIFY]
-  low_fuel: [PRACTICE, RACE]
-  spotter: []                # off for now; was [PRACTICE, QUALIFY, WARMUP, RACE]
+enabled:                     # SessionType names; no event calls the model, each speaks a fixed sentence
+  fastest_lap: [RACE]        # a new overall fastest lap, else the driver's new personal best
+  overall_best: [QUALIFY]    # a new overall fastest lap only
+  personal_best: [PRACTICE]  # the driver's new personal best only
+  sector_comparison: [QUALIFY]   # a car of the class goes faster than the driver: said when it crosses the line
+  traffic: [RACE]            # slower traffic reached within the next lap: a pack, a single car or backmarkers
+  low_fuel: []               # off; was [PRACTICE, RACE]
+  spotter: []                # off; was [PRACTICE, QUALIFY, WARMUP, RACE]
   rival_watch: []            # off: rivals are tracked and stored, not announced; was [RACE]
   flags: []                  # off; was [PRACTICE, QUALIFY, WARMUP, RACE]
-  grid_briefing: [RACE]
+  grid_briefing: []          # off; was [RACE]
