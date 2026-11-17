@@ -141,7 +141,7 @@ devices:
   sample_rate_hz: 16000        # Whisper and the Vosk models are 16 kHz mono
   poll_hz: 50                  # button polling
   talk:
-    mode: HOLD                 # HOLD = record while held; TOGGLE = press to start, press to stop
+    mode: TOGGLE               # HOLD = record while held; TOGGLE = press to start, press to stop
     max_s: 15.0                # recording is cut here
   filter:
     min_audio_s: 0.4           # shorter recordings are dropped (accidental press)
