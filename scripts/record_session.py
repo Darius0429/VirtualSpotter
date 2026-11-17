@@ -4,11 +4,11 @@ from pathlib import Path
 import typer
 import yaml
 
-from ai_race_engineer.recorders.parquet_session import ParquetSessionWriter
-from ai_race_engineer.recorders.session_recorder import SessionRecorder
-from ai_race_engineer.telemetry.frame_source import FrameSource
-from ai_race_engineer.telemetry.lmu_frames import LMUFrameSource
-from ai_race_engineer.telemetry.rf2_frames import RF2FrameSource
+from ai_race_engineer.domains.common.recording.parquet_session import ParquetSessionWriter
+from ai_race_engineer.domains.common.recording.session_recorder import SessionRecorder
+from ai_race_engineer.domains.common.data.frame_source import FrameSource
+from ai_race_engineer.domains.lmu.lmu_frames import LMUFrameSource
+from ai_race_engineer.domains.rf2.rf2_frames import RF2FrameSource
 
 FRAME_SOURCES: dict[str, type[FrameSource]] = {"lmu": LMUFrameSource, "rf2": RF2FrameSource}
 

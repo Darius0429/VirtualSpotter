@@ -6,16 +6,16 @@ from pathlib import Path
 import typer
 import yaml
 
-from ai_race_engineer.events.base import Callout
-from ai_race_engineer.events.fastest_lap import FastestLap
-from ai_race_engineer.events.low_fuel import LowFuel
-from ai_race_engineer.events.monitor import EventMonitor
-from ai_race_engineer.events.sector_comparison import SectorComparison
-from ai_race_engineer.events.spotter import Spotter
-from ai_race_engineer.strategy.consumption import ConsumptionTracker
-from ai_race_engineer.telemetry.base import TelemetrySource
-from ai_race_engineer.telemetry.lmu import LMUSource
-from ai_race_engineer.telemetry.rf2 import RF2Source
+from ai_race_engineer.domains.common.callouts.base import Callout
+from ai_race_engineer.domains.common.callouts.fastest_lap import FastestLap
+from ai_race_engineer.domains.common.callouts.low_fuel import LowFuel
+from ai_race_engineer.domains.common.callouts.monitor import EventMonitor
+from ai_race_engineer.domains.common.callouts.sector_comparison import SectorComparison
+from ai_race_engineer.domains.common.callouts.spotter import Spotter
+from ai_race_engineer.domains.common.analysis.strategy.consumption import ConsumptionTracker
+from ai_race_engineer.domains.common.data.base import TelemetrySource
+from ai_race_engineer.domains.lmu.lmu import LMUSource
+from ai_race_engineer.domains.rf2.rf2 import RF2Source
 
 SOURCES: dict[str, type[TelemetrySource]] = {"lmu": LMUSource, "rf2": RF2Source}
 

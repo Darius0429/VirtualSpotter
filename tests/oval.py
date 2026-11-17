@@ -1,8 +1,8 @@
 import dataclasses
 import math
 
-from ai_race_engineer.telemetry.race_snapshot import CarTyres, RaceSnapshot, TrackFlags
-from ai_race_engineer.telemetry.snapshot import PlayerState, SessionState, SessionType, VehicleState
+from ai_race_engineer.domains.common.data.race_snapshot import CarTyres, RaceSnapshot, TrackFlags
+from ai_race_engineer.domains.common.data.snapshot import PlayerState, SessionState, SessionType, VehicleState
 
 STRAIGHT_M: float = 500.0
 RADIUS_M: float = 100.0

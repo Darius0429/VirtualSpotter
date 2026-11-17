@@ -3,9 +3,9 @@ from pathlib import Path
 import typer
 import yaml
 
-from ai_race_engineer.recorders.history_store import HistoryStore
-from ai_race_engineer.recorders.results_import import import_report, import_results
-from ai_race_engineer.telemetry.results_file import most_flagged_player
+from ai_race_engineer.domains.common.store.history_store import HistoryStore
+from ai_race_engineer.domains.common.store.results_import import import_report, import_results
+from ai_race_engineer.domains.common.data.results_file import most_flagged_player
 
 
 def main(folder: Path, driver: str = "", history: Path = Path("configs/history.yaml")) -> None:

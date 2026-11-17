@@ -6,17 +6,17 @@ import typer
 import yaml
 from elevenlabs.client import ElevenLabs
 
-from ai_race_engineer.voice.base import SpeechToText
-from ai_race_engineer.voice.button import Button
-from ai_race_engineer.voice.compare_stt import CompareSpeechToText
-from ai_race_engineer.voice.elevenlabs_stt import ElevenLabsSpeechToText
-from ai_race_engineer.voice.joystick_button import JoystickButton, joystick_names, wait_for_press
-from ai_race_engineer.voice.keyboard_button import KeyboardButton
-from ai_race_engineer.voice.microphone import Microphone, input_devices
-from ai_race_engineer.voice.talk_switch import TalkMode, TalkSwitch
-from ai_race_engineer.voice.voice_questions import VoiceQuestions
-from ai_race_engineer.voice.vosk_stt import VoskSpeechToText
-from ai_race_engineer.voice.whisper_stt import WhisperSpeechToText
+from ai_race_engineer.domains.common.voice.base import SpeechToText
+from ai_race_engineer.domains.common.voice.button import Button
+from ai_race_engineer.domains.common.voice.compare_stt import CompareSpeechToText
+from ai_race_engineer.domains.common.voice.elevenlabs_stt import ElevenLabsSpeechToText
+from ai_race_engineer.domains.common.voice.joystick_button import JoystickButton, joystick_names, wait_for_press
+from ai_race_engineer.domains.common.voice.keyboard_button import KeyboardButton
+from ai_race_engineer.domains.common.voice.microphone import Microphone, input_devices
+from ai_race_engineer.domains.common.voice.talk_switch import TalkMode, TalkSwitch
+from ai_race_engineer.domains.common.voice.voice_questions import VoiceQuestions
+from ai_race_engineer.domains.common.voice.vosk_stt import VoskSpeechToText
+from ai_race_engineer.domains.common.voice.whisper_stt import WhisperSpeechToText
 
 STT: dict[str, Callable[[dict[str, object], int, Callable[[], str]], SpeechToText]] = {
     "whisper": lambda cfg, rate, names: WhisperSpeechToText(**cfg["whisper"], sample_rate_hz=rate, names=names),

@@ -6,12 +6,12 @@ import numpy as np
 import typer
 import yaml
 
-from ai_race_engineer.strategy.fuel import LapConsumption
-from ai_race_engineer.strategy.proximity import to_player_frame
-from ai_race_engineer.strategy.standings import standings
-from ai_race_engineer.telemetry.base import TelemetrySource
-from ai_race_engineer.telemetry.lmu import LMUSource
-from ai_race_engineer.telemetry.rf2 import RF2Source
+from ai_race_engineer.domains.common.analysis.strategy.fuel import LapConsumption
+from ai_race_engineer.domains.common.analysis.field.proximity import to_player_frame
+from ai_race_engineer.domains.common.analysis.field.standings import standings
+from ai_race_engineer.domains.common.data.base import TelemetrySource
+from ai_race_engineer.domains.lmu.lmu import LMUSource
+from ai_race_engineer.domains.rf2.rf2 import RF2Source
 
 SOURCES: dict[str, type[TelemetrySource]] = {"lmu": LMUSource, "rf2": RF2Source}
 
