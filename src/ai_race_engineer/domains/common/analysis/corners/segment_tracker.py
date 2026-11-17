@@ -2,6 +2,8 @@ import dataclasses
 from collections.abc import Callable
 from dataclasses import dataclass
 
+import numpy as np
+
 from ai_race_engineer.domains.common.analysis.corners.corner_card import CardLimits, SegmentCard, lap_cards, segment_card
 from ai_race_engineer.domains.common.analysis.corners.lap_segments import LapSamples, lap_samples
 from ai_race_engineer.domains.common.analysis.corners.lap_summary import LapShares, lap_shares
@@ -138,7 +140,10 @@ class SegmentTracker:
 
     def _add_live(self) -> None:
         """Add the card of the next segment of the lap in progress once the car has left it; a corner counts as
-        left when the car is past the stretch after it where the exit is measured.
+        left when the car is past the stretch after it where the exit is measured. A segment the car was not polled
+        in (the game moves the lap distance from behind the line to the end of the lap when a race starts from the
+        grid, and a car can be put back on track) is not driven: before the first card the cards start one segment
+        later, after it they end for this lap.
         In:  -
         Out: None
         """
@@ -150,6 +155,10 @@ class SegmentTracker:
         if self._buffer[-1].vehicle.lap_distance_m < left_m:
             return
         samples = lap_samples(self._buffer, None)
+        first, last = np.searchsorted(samples.distance_m, (segment.start_m, segment.end_m))
+        if first == last:
+            self.live_first, self._carding = self.live_first + (not self.live), not self.live
+            return
         search_from_m = max(self._floor_m, segment.start_m - self._limits.search_m)
         self.live = (*self.live, segment_card(samples, segment, search_from_m, self._limits))
         self.live_samples = samples

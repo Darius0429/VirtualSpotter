@@ -1,6 +1,9 @@
+import dataclasses
+
 from ai_race_engineer.domains.common.analysis.corners.segment_tracker import SegmentTracker
 from ai_race_engineer.domains.common.analysis.corners.track_map import Segment
-from tests.oval import oval_lap
+from ai_race_engineer.domains.common.data.race_snapshot import RaceSnapshot
+from tests.oval import LENGTH_M, oval_lap
 from tests.domains.common.analysis.corners.test_corner_card import LIMITS
 
 STORED: tuple[Segment, ...] = (Segment("pit straight", False, 0.0, 1000.0, None),)
@@ -131,3 +134,31 @@ def test_best_lap_is_stored_and_is_the_reference_of_a_later_session() -> None:
     _drive(later, (0, None, False))
     assert (later.laps, later.reference.lap_time_s) == ((), 39.0)
     assert [c.name for c in later.reference.cards] == [s.name for s in later.segments]
+
+
+def test_segments_the_car_was_not_polled_in_are_skipped_at_a_start_from_the_grid() -> None:
+    """A car standing on the grid 100 m behind the line, whose lap distance then moves to the end of the lap, gets
+    a card for the segment it starts in and none for the segments before it."""
+    quarters = tuple(Segment(name, False, 400.0 * i, 400.0 * (i + 1), None) for i, name in enumerate("abcd"))
+    tracker = _tracker(_Store({"Oval": quarters}))
+    grid_m = LENGTH_M - 100.0
+    driven = [snapshot for snapshot in oval_lap(0) if snapshot.player.vehicle.lap_distance_m >= grid_m]
+    standing = [_placed(driven[0], -100.0, 0.01 * i, i == 0) for i in range(4)]
+    for snapshot in (*standing, _placed(driven[0], grid_m, 0.03, False), *driven[1:]):
+        tracker.update(snapshot)
+    assert (tracker.live_first, [card.name for card in tracker.live]) == (3, ["d"])
+
+
+def _placed(snapshot: RaceSnapshot, lap_distance_m: float, moved_m: float, in_pits: bool) -> RaceSnapshot:
+    """A snapshot with the player's car standing where it is, at another lap distance.
+    In:  snapshot        RaceSnapshot
+         lap_distance_m  float         m from the line as the game counts it; negative behind it
+         moved_m         float         m the car has crept along world x
+         in_pits         bool
+    Out:                 RaceSnapshot
+    """
+    x_m, z_m = snapshot.player.vehicle.position_xz_m
+    vehicle = dataclasses.replace(
+        snapshot.player.vehicle, lap_distance_m=lap_distance_m, position_xz_m=(x_m + moved_m, z_m), in_pits=in_pits
+    )
+    return dataclasses.replace(snapshot, player=dataclasses.replace(snapshot.player, vehicle=vehicle))
