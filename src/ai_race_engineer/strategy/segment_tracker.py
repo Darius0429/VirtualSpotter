@@ -1,10 +1,9 @@
 import dataclasses
-import math
 from collections.abc import Callable
 from dataclasses import dataclass
 
 from ai_race_engineer.strategy.corner_card import CardLimits, SegmentCard, lap_cards, segment_card
-from ai_race_engineer.strategy.lap_segments import LapSamples, driven_length_m, lap_samples, open_lap_samples
+from ai_race_engineer.strategy.lap_segments import LapSamples, lap_samples
 from ai_race_engineer.strategy.lap_summary import LapShares, lap_shares
 from ai_race_engineer.strategy.track_map import Segment, track_map
 from ai_race_engineer.telemetry.race_snapshot import RaceSnapshot
@@ -31,16 +30,16 @@ class AnalysedLap:
 class SegmentTracker:
     """Collects the player's telemetry of the running lap and, at the start/finish line, splits the finished lap
     into the track's corners and straights. The track map comes from the store, else from the first full lap driven
-    outside the pits. Out-laps, in-laps and laps the game did not time are not analysed.
+    outside the pits. Out-laps, in-laps and laps the game did not time are not analysed as laps, but their segments
+    are in live as they are driven: on an out-lap from the pit exit, on an in-lap up to the pit entry.
     laps          tuple[AnalysedLap, ...]  analysed laps of the session, oldest first (replaced, never mutated)
     reference     AnalysedLap | None       the driver's best lap of this car on this track, from this or an earlier
                                            session (lap number 0); it outlives a change of session
     live          tuple[SegmentCard, ...]  the segments already driven on the lap in progress, in driving order; a
                                            corner is added once the car is past its exit (replaced, never mutated)
+    live_first    int                      position in the track map of the first segment in live: 0 on a lap
+                                           from the line, the first segment after the pit exit on an out-lap
     live_samples  LapSamples | None        the telemetry of the lap in progress when the last card was made
-    _scale        float | None             track length over the length of the driver's line on a full lap; None
-                                           until a full lap is known
-    _driven_m     float                    m driven on the lap in progress, scaled
     _floor_m      float                    m lap distance before which the braking of the next corner is not sought
     segments      tuple[Segment, ...]      the track map; empty until known (replaced, never mutated)
     latest        RaceSnapshot | None      the latest snapshot (read from other threads)
@@ -53,7 +52,9 @@ class SegmentTracker:
     _track        str                      track of the map
     _lap          int | None               completed laps at the last snapshot; None before the first
     _full         bool                     the running lap was seen from the line and stayed out of the pits
-    _buffer       list[PlayerState]        states of the running lap
+    _carding      bool                     segments of the running lap are being added to live
+    _pitted       bool                     the car was in the pits or the garage at the last snapshot
+    _buffer       list[PlayerState]        states of the running lap; on an out-lap from where the car left the pits
     """
 
     def __init__(
@@ -80,9 +81,8 @@ class SegmentTracker:
         self.laps: tuple[AnalysedLap, ...] = ()
         self.reference: AnalysedLap | None = None
         self.live: tuple[SegmentCard, ...] = ()
+        self.live_first: int = 0
         self.live_samples: LapSamples | None = None
-        self._scale: float | None = None
-        self._driven_m: float = 0.0
         self._floor_m: float = 0.0
         self.segments: tuple[Segment, ...] = ()
         self.latest: RaceSnapshot | None = None
@@ -97,6 +97,8 @@ class SegmentTracker:
         self._track: str = ""
         self._lap: int | None = None
         self._full: bool = False
+        self._carding: bool = False
+        self._pitted: bool = False
         self._buffer: list[PlayerState] = []
 
     def update(self, snapshot: RaceSnapshot) -> None:
@@ -112,20 +114,24 @@ class SegmentTracker:
             self.laps, self._lap = (), None
             stored = self._load_best(self._track, car) if self.segments else None
             self.reference = None if stored is None else self._analysed(0, *stored)
-            self._scale = None if stored is None else _scale(stored[1], snapshot.session.track_length_m)
         if vehicle.completed_laps != self._lap:
             if self._lap is not None and vehicle.completed_laps < self._lap:
                 self.laps = ()
             elif self._full and vehicle.completed_laps == self._lap + 1 and vehicle.last_lap_s is not None:
                 self._finish(snapshot)
-            self._full = self._lap is not None
+            self._full = self._carding = self._lap is not None
             self._lap = vehicle.completed_laps
             self._buffer = []
-            self.live, self.live_samples, self._driven_m, self._floor_m = (), None, 0.0, 0.0
-        if vehicle.in_pits:
-            self._full = False
-        if self._buffer and self._scale is not None:
-            self._driven_m += self._scale * math.dist(self._buffer[-1].vehicle.position_xz_m, vehicle.position_xz_m)
+            self.live, self.live_first, self.live_samples, self._floor_m = (), 0, None, 0.0
+        pitted = vehicle.in_pits or vehicle.in_garage
+        if pitted:
+            self._full = self._carding = False
+        elif self._pitted:
+            self._carding = True
+            self._buffer = []
+            first = sum(segment.start_m < vehicle.lap_distance_m for segment in self.segments)
+            self.live, self.live_first, self.live_samples, self._floor_m = (), first, None, 0.0
+        self._pitted = pitted
         self._buffer.append(snapshot.player)
         self._add_live()
         self.latest = snapshot
@@ -136,12 +142,14 @@ class SegmentTracker:
         In:  -
         Out: None
         """
-        if not self._full or self._scale is None or len(self.live) >= len(self.segments):
+        index = self.live_first + len(self.live)
+        if not self._carding or index >= len(self.segments):
             return
-        segment = self.segments[len(self.live)]
-        if self._driven_m < segment.end_m + (self._limits.after_exit_m if segment.corner else 0.0):
+        segment = self.segments[index]
+        left_m = segment.end_m + (self._limits.after_exit_m if segment.corner else 0.0)
+        if self._buffer[-1].vehicle.lap_distance_m < left_m:
             return
-        samples = open_lap_samples(self._buffer, self._scale)
+        samples = lap_samples(self._buffer, None)
         search_from_m = max(self._floor_m, segment.start_m - self._limits.search_m)
         self.live = (*self.live, segment_card(samples, segment, search_from_m, self._limits))
         self.live_samples = samples
@@ -153,14 +161,13 @@ class SegmentTracker:
         Out:           None
         """
         vehicle = snapshot.player.vehicle
-        samples = lap_samples(self._buffer, snapshot.session.track_length_m, vehicle.last_lap_s)
+        samples = lap_samples(self._buffer, vehicle.last_lap_s)
         if not self.segments:
             self.segments = track_map(
                 samples.distance_m, samples.x_m, samples.z_m, snapshot.session.track_length_m, **self._map_args
             )
             self._save(self._track, self.segments)
         lap = self._analysed(vehicle.completed_laps, vehicle.last_lap_s, samples)
-        self._scale = snapshot.session.track_length_m / driven_length_m(self._buffer)
         self.laps = (*self.laps, lap)[-self._keep_laps :]
         if self.reference is None or lap.lap_time_s < self.reference.lap_time_s:
             self.reference = dataclasses.replace(lap, lap=0)
@@ -176,21 +183,3 @@ class SegmentTracker:
         return AnalysedLap(
             lap, lap_time_s, samples, lap_cards(samples, self.segments, self._limits), lap_shares(samples, self._limits)
         )
-
-
-def _scale(samples: LapSamples, track_length_m: float) -> float:
-    """Track length over the length of the line driven on a full lap.
-    In:  samples         LapSamples  a full lap
-         track_length_m  float       m
-    Out:                 float
-    """
-    return track_length_m / float(sum(math.dist(a, b) for a, b in _pairs(samples)))
-
-
-def _pairs(samples: LapSamples) -> list[tuple[tuple[float, float], tuple[float, float]]]:
-    """Neighbouring positions of a lap.
-    In:  samples  LapSamples
-    Out:          list[tuple[tuple[float, float], tuple[float, float]]]  ((x, z), (x, z)) of each step
-    """
-    points = list(zip(samples.x_m.tolist(), samples.z_m.tolist(), strict=True))
-    return list(zip(points, points[1:], strict=False))

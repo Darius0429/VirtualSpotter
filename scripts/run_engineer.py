@@ -21,7 +21,7 @@ from ai_race_engineer.agent.logged_agent import LoggedAgent
 from ai_race_engineer.agent.race_context import RaceContext
 from ai_race_engineer.agent.race_notes import RaceNoteWriter
 from ai_race_engineer.agent.race_story import RaceStory
-from ai_race_engineer.agent.segment_tools import SegmentTools
+from ai_race_engineer.agent.store_tools import StoreTools
 from ai_race_engineer.agent.timeline_agent import TimelineAgent
 from ai_race_engineer.agent.timeline_tools import TimelineTools
 from ai_race_engineer.agent.traffic_tools import TrafficTools
@@ -48,6 +48,8 @@ from ai_race_engineer.recorders.keep_running import keep_running
 from ai_race_engineer.recorders.log_handler import RunLogHandler, log_thread_errors
 from ai_race_engineer.recorders.run_info import run_info
 from ai_race_engineer.recorders.run_log import RunLog
+from ai_race_engineer.recorders.segment_recorder import SegmentRecorder
+from ai_race_engineer.recorders.segment_store import SegmentStore
 from ai_race_engineer.recorders.session_keeper import SessionKeeper
 from ai_race_engineer.recorders.session_store import SessionStore
 from ai_race_engineer.recorders.state_log import StateLog
@@ -59,6 +61,7 @@ from ai_race_engineer.strategy.contacts import ContactTracker
 from ai_race_engineer.strategy.corner_card import CardLimits
 from ai_race_engineer.strategy.corner_compare import FindingLimits
 from ai_race_engineer.strategy.lap_history import LapHistory
+from ai_race_engineer.strategy.lap_types import LapTypeTracker
 from ai_race_engineer.strategy.live_segments import LiveSegmentTracker
 from ai_race_engineer.strategy.pit_log import PitStopLog
 from ai_race_engineer.strategy.pit_time import PitLane, PitRates
@@ -281,17 +284,28 @@ def main(
     now = RaceContext(tracker, segments)
     rival_lines = RivalLineTracker()
     live_segments = LiveSegmentTracker(lambda: segments.segments)
-    segment_tools = SegmentTools(
+    lap_types = LapTypeTracker()
+    segment_store = SegmentStore(Path(strat_cfg["segment_store"]) / time.strftime("%Y%m%d_%H%M%S.sqlite"))
+    segment_recorder = SegmentRecorder(
         segments,
         rival_lines,
         live_segments,
+        lap_types,
+        segment_store,
+        best_laps.load_class,
+        CardLimits(**seg_cfg["card"]),
+        FindingLimits(**seg_cfg["findings"]),
+        seg_cfg["plot_margin_m"],
+    )
+    segment_tools = StoreTools(
+        segment_store,
+        segments,
         CornerPlotter(
             Path(strat_cfg["corner_plots"]),
             seg_cfg["plot_margin_m"],
             seg_cfg["card"]["brake_on"],
             seg_cfg["card"]["throttle_on"],
         ),
-        FindingLimits(**seg_cfg["findings"]),
         seg_cfg["card"]["search_m"],
     )
     story_cfg = agent_cfg["story"]
@@ -313,6 +327,8 @@ def main(
         segments.update,
         rival_lines.update,
         live_segments.update,
+        lap_types.update,
+        segment_recorder.update,
         garage.update,
         session_log.update,
         tracker.update,
@@ -384,7 +400,7 @@ def main(
     traffic_tools = TrafficTools(tracker, race_cfg["traffic_horizon_laps"], race_cfg["traffic_pack_gap_m"])
     configure_retries(agent_cfg["attempts"], agent_cfg["retry_wait_s"], agent_cfg["error_reply"])
     stopping = threading.Event()
-    with run_log, feed, ExitStack() as on_exit:
+    with run_log, segment_store, feed, ExitStack() as on_exit:
         on_exit.callback(keeper.close)
         on_exit.callback(timeline.close)
         on_exit.callback(stopping.set)

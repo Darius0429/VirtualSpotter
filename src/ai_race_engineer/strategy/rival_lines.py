@@ -87,7 +87,8 @@ class RivalLineTracker:
     _track         str                  track of the lines
     _laps          dict[int, int]       slot id -> completed laps at the last snapshot
     _full          dict[int, bool]      slot id -> the running lap was seen from the line and stayed out of the pits
-    _points        dict[int, list[tuple[float, float, float]]]  slot id -> (x m, z m, speed m/s) of the running lap
+    _points        dict[int, list[tuple[float, float, float, float]]]  slot id -> (x m, z m, speed m/s, lap distance
+                                                                m) of the running lap
     """
 
     def __init__(self) -> None:
@@ -101,7 +102,7 @@ class RivalLineTracker:
         self._track: str = ""
         self._laps: dict[int, int] = {}
         self._full: dict[int, bool] = {}
-        self._points: dict[int, list[tuple[float, float, float]]] = {}
+        self._points: dict[int, list[tuple[float, float, float, float]]] = {}
 
     def update(self, snapshot: RaceSnapshot) -> None:
         """Feed one snapshot.
@@ -114,13 +115,12 @@ class RivalLineTracker:
         self.player_class = snapshot.player.vehicle.class_name
         for vehicle in snapshot.vehicles:
             if not vehicle.is_player:
-                self._update_car(vehicle, snapshot.session.track_length_m)
+                self._update_car(vehicle)
 
-    def _update_car(self, vehicle: VehicleState, track_length_m: float) -> None:
+    def _update_car(self, vehicle: VehicleState) -> None:
         """Feed one car's state.
-        In:  vehicle         VehicleState
-             track_length_m  float         m
-        Out:                 None
+        In:  vehicle  VehicleState
+        Out:          None
         """
         slot = vehicle.slot_id
         laps = self._laps.get(slot)
@@ -128,24 +128,23 @@ class RivalLineTracker:
             if laps is not None and vehicle.completed_laps < laps:
                 self.last = {key: lap for key, lap in self.last.items() if key != slot}
             elif self._full.get(slot) and vehicle.completed_laps == laps + 1 and vehicle.last_lap_s is not None:
-                self._finish(vehicle, track_length_m)
+                self._finish(vehicle)
             self._full[slot] = laps is not None
             self._laps[slot] = vehicle.completed_laps
             self._points[slot] = []
         if vehicle.in_pits:
             self._full[slot] = False
-        point = (*vehicle.position_xz_m, vehicle.speed_mps)
+        point = (*vehicle.position_xz_m, vehicle.speed_mps, vehicle.lap_distance_m)
         if not self._points[slot] or self._points[slot][-1][:2] != point[:2]:
             self._points[slot].append(point)
 
-    def _finish(self, vehicle: VehicleState, track_length_m: float) -> None:
+    def _finish(self, vehicle: VehicleState) -> None:
         """Keep the lap in the buffer as the car's last lap, and as its best when it is the fastest so far.
-        In:  vehicle         VehicleState  first state after the line: carries the lap time
-             track_length_m  float         m
-        Out:                 None
+        In:  vehicle  VehicleState  first state after the line: carries the lap time
+        Out:          None
         """
-        x_m, z_m, speed_mps = np.array(self._points[vehicle.slot_id], dtype=np.float64).T
-        line = line_samples(x_m, z_m, speed_mps, track_length_m, vehicle.last_lap_s)
+        x_m, z_m, speed_mps, lap_distance_m = np.array(self._points[vehicle.slot_id], dtype=np.float64).T
+        line = line_samples(x_m, z_m, speed_mps, lap_distance_m, vehicle.last_lap_s)
         lap = RivalLap(vehicle.driver_name, vehicle.class_name, vehicle.last_lap_s, line)
         self.last = {**self.last, vehicle.slot_id: lap}
         known = self.best.get(vehicle.slot_id)

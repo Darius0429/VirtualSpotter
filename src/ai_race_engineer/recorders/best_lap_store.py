@@ -31,12 +31,17 @@ class BestLapStore:
         Out:             tuple[float, LapSamples] | None  lap time (s) and telemetry; None when there is none or the
                                                           file cannot be read
         """
-        try:
-            with np.load(self._path(track_name, car)) as data:
-                arrays = {name: data[name] for name in data.files}
-            return float(arrays.pop(LAP_TIME)), LapSamples(**arrays)
-        except (OSError, ValueError, TypeError, KeyError):
-            return None
+        return _read(self._path(track_name, car))
+
+    def load_class(self, track_name: str, class_name: str) -> tuple[float, LapSamples] | None:
+        """Fastest stored lap on a track in any car of a class.
+        In:  track_name  str
+             class_name  str
+        Out:             tuple[float, LapSamples] | None  lap time (s) and telemetry; None when there is none
+        """
+        start = self._path(track_name, f"{class_name} ").stem
+        laps = [_read(path) for path in self._folder.glob("*.npz") if path.name.startswith(start)]
+        return min((lap for lap in laps if lap is not None), key=lambda lap: lap[0], default=None)
 
     def save(self, track_name: str, car: str, lap_time_s: float, samples: LapSamples) -> None:
         """Store a best lap; a disk error is logged and the lap stays in memory only.
@@ -59,3 +64,17 @@ class BestLapStore:
         Out:             Path
         """
         return self._folder / re.sub(r'[<>:"/\\|?*]', "_", f"{track_name} - {car}.npz")
+
+
+def _read(path: Path) -> tuple[float, LapSamples] | None:
+    """One stored lap.
+    In:  path  Path
+    Out:       tuple[float, LapSamples] | None  lap time (s) and telemetry; None when the file is missing or cannot
+                                                be read
+    """
+    try:
+        with np.load(path) as data:
+            arrays = {name: data[name] for name in data.files}
+        return float(arrays.pop(LAP_TIME)), LapSamples(**arrays)
+    except (OSError, ValueError, TypeError, KeyError):
+        return None

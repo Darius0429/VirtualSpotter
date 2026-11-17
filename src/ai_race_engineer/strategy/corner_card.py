@@ -47,7 +47,9 @@ class CornerEntry:
     time_to_peak_decel_s      float  s from the brake point to the strongest deceleration
     braking_m                 float  m from the brake point to the last brake release
     release_to_apex_m         float  m from the last brake release to the apex; negative = released after the apex
-    trail_brake_m             float  m braked after turning in
+    trail_brake_m             float  m braked while turning into this corner, up to the last brake release;
+                                     the load of the corner before, the other way or let go in between, is
+                                     not counted
     release_roughness_per_s   float  1/s mean change of the brake pedal speed while releasing; lower is smoother
     min_combined_g            float  g lowest combined acceleration between the strongest braking and the highest
                                      cornering load; a dip far below both means grip left unused
@@ -233,8 +235,10 @@ def _entry(
         lift -= 1
     hardest = on + int(np.argmin(samples.lon_g[on : off + 1]))
     loaded = first + int(np.argmax(np.abs(samples.lat_g[first:last])))
-    turning = np.flatnonzero(np.abs(samples.lat_g[on : slowest + 1]) > limits.turn_in_g)
-    turn_in = on + int(turning[0]) if turning.size else slowest
+    lat_g_peak = samples.lat_g[loaded]
+    braked_g = samples.lat_g[on : off + 1]
+    not_turning = np.flatnonzero((np.abs(braked_g) <= limits.turn_in_g) | (np.sign(braked_g) != np.sign(lat_g_peak)))
+    turn_in = min(on + int(not_turning[-1]) + 1, off) if not_turning.size else on
     release = samples.brake[int(on + np.argmax(samples.brake[on : off + 1])) : off + 1]
     release_s = time_s[off + 1 - release.size : off + 1]
     locking = (samples.wheel_ratio[on : off + 1] < limits.lock_ratio) & (samples.brake[on : off + 1, None] > 0)

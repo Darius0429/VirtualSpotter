@@ -5,7 +5,7 @@ import pytest
 from ai_race_engineer.strategy.corner_card import lap_cards
 from ai_race_engineer.strategy.corner_compare import FindingLimits, compare, line_wider_m
 from ai_race_engineer.strategy.lap_segments import LapSamples, lap_samples
-from tests.oval import LENGTH_M, oval_lap
+from tests.oval import oval_lap
 from tests.strategy.test_corner_card import LIMITS, SEGMENTS
 
 FINDINGS: FindingLimits = FindingLimits(distance_m=5.0, speed_kph=2.0, decel_g=0.1, time_s=0.15)
@@ -17,7 +17,7 @@ def _lap(lap_time_s: float, brake_zone_m: float) -> LapSamples:
          brake_zone_m  float  m
     Out:               LapSamples
     """
-    return lap_samples([s.player for s in oval_lap(0, brake_zone_m=brake_zone_m)], LENGTH_M, lap_time_s)
+    return lap_samples([s.player for s in oval_lap(0, brake_zone_m=brake_zone_m)], lap_time_s)
 
 
 def test_earlier_and_softer_braking_is_found_and_costs_time_before_the_apex() -> None:

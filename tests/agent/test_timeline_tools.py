@@ -118,10 +118,10 @@ def test_add_note_reaches_the_session_log_and_the_timeline() -> None:
     assert [(e.kind, e.text, e.fields) for e in stored] == [("note", "understeer in turn 4", {})]
 
 
-def test_timeline_replaces_notes_in_the_sixteen_tools() -> None:
-    """The agent is offered the timeline instead of the notes list; the number of tools stays sixteen."""
+def test_timeline_replaces_notes_in_the_fifteen_tools() -> None:
+    """The agent is offered the timeline instead of the notes list; the number of tools stays fifteen."""
     names = [tool.__name__ for tool in _tools([]).tools()]
-    assert len(names) == len(set(names)) == 16
+    assert len(names) == len(set(names)) == 15
     assert "notes" not in names
     assert names[-1] == "timeline"
     assert "add_note" in names

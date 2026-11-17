@@ -13,7 +13,7 @@ def _map(merge_gap_m: float = 50.0) -> tuple[Segment, ...]:
     In:  merge_gap_m  float  m
     Out:              tuple[Segment, ...]
     """
-    samples = lap_samples([s.player for s in oval_lap(0)], LENGTH_M, 30.0)
+    samples = lap_samples([s.player for s in oval_lap(0)], 30.0)
     return track_map(
         samples.distance_m,
         samples.x_m,

@@ -33,15 +33,19 @@ class CarResources:
 
 @dataclass(frozen=True)
 class LapSectors:
-    """Sector times of the last completed lap of one car.
+    """Sector times of one car: of its last completed lap and of the lap it is on.
     slot_id             int           game slot id
     last_sector1_s      float | None  s; None when the game has no valid time
     last_sector2_cum_s  float | None  s (sector 1 + sector 2); None when the game has no valid time
+    sector1_s           float | None  s sector 1 of the lap in progress; None until it is finished or when not valid
+    sector2_cum_s       float | None  s (sector 1 + sector 2) of the lap in progress; None until sector 2 is finished
     """
 
     slot_id: int
     last_sector1_s: float | None
     last_sector2_cum_s: float | None
+    sector1_s: float | None = None
+    sector2_cum_s: float | None = None
 
 
 @dataclass(frozen=True)

@@ -28,7 +28,7 @@ def test_fastest_full_lap_of_another_car_is_kept() -> None:
     lap = tracker.best[1]
     assert (lap.driver_name, lap.lap_time_s) == ("Rival One", 39.0)
     assert tracker.last[1].lap_time_s == 39.5
-    assert lap.line.distance_m[-1] == pytest.approx(LENGTH_M)
+    assert lap.line.distance_m[-1] == pytest.approx(LENGTH_M, abs=4.0)
     assert lap.line.time_s[-1] == pytest.approx(39.0)
     assert 0 not in tracker.best
 

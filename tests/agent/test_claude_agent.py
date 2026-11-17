@@ -5,16 +5,11 @@ from types import SimpleNamespace
 import pytest
 
 from ai_race_engineer.agent.claude_agent import ClaudeAgent
-from ai_race_engineer.agent.segment_tools import SegmentTools
+from ai_race_engineer.agent.store_tools import StoreTools, _named
 from ai_race_engineer.agent.tool_schema import tool_schema
 from ai_race_engineer.recorders.corner_plot import CornerPlotter
 from ai_race_engineer.recorders.run_log import RunLog
-from ai_race_engineer.strategy.live_segments import LiveSegmentTracker
-from ai_race_engineer.strategy.rival_lines import RivalLineTracker
-from ai_race_engineer.strategy.segment_tracker import SegmentTracker
-from tests.oval import oval_lap, with_rival
-from tests.strategy.test_corner_card import LIMITS
-from tests.strategy.test_corner_compare import FINDINGS
+from tests.recorders.test_segment_recorder import Run, run
 
 MAX_TOKENS: dict[str, int] = {"low": 4096, "medium": 4096, "high": 16384}
 
@@ -68,45 +63,6 @@ def _tool_use(name: str, **arguments: object) -> SimpleNamespace:
     return SimpleNamespace(type="tool_use", id="call_1", name=name, input=arguments)
 
 
-def _trackers() -> tuple[SegmentTracker, RivalLineTracker, LiveSegmentTracker]:
-    """Segment tracker after four laps of the oval: lap 2 (40.0 s, braked 20 m earlier), lap 3 (39.5 s) and
-    lap 4 (40.5 s) are analysed. Rival One drives the same laps 3 m further in x and 0.5 s faster.
-    In:  -
-    Out: tuple[SegmentTracker, RivalLineTracker, LiveSegmentTracker]
-    """
-    rivals = RivalLineTracker()
-    live = LiveSegmentTracker(lambda: tracker.segments)
-    tracker = SegmentTracker(
-        lambda track: (),
-        lambda track, segments: None,
-        lambda track, car: None,
-        lambda track, car, lap_time_s, samples: None,
-        keep_laps=30,
-        limits=LIMITS,
-        step_m=5.0,
-        smooth_m=55.0,
-        max_radius_m=400.0,
-        min_turn_deg=18.0,
-        entry_pad_m=100.0,
-        exit_pad_m=50.0,
-        merge_gap_m=50.0,
-    )
-    for completed_laps, last_lap_s, brake_zone_m in (
-        (0, None, 100.0),
-        (1, 41.0, 120.0),
-        (2, 40.0, 100.0),
-        (3, 39.5, 100.0),
-        (4, 40.5, 100.0),
-    ):
-        rival_s = None if last_lap_s is None else last_lap_s - 0.5
-        lap = oval_lap(completed_laps, last_lap_s, brake_zone_m=brake_zone_m)
-        for snapshot in with_rival(lap, "Rival One", rival_s, shift_x_m=3.0):
-            tracker.update(snapshot)
-            rivals.update(snapshot)
-            live.update(snapshot)
-    return tracker, rivals, live
-
-
 def _agent(tmp_path: Path, effort: str, *replies: SimpleNamespace) -> tuple[ClaudeAgent, _Messages, _Messages]:
     """Agent on the segment tools with a router that picks the effort and a main model that gives the replies.
     In:  tmp_path  Path
@@ -130,21 +86,33 @@ def _agent(tmp_path: Path, effort: str, *replies: SimpleNamespace) -> tuple[Clau
     return agent, router, main
 
 
-def _tools(tmp_path: Path) -> SegmentTools:
-    """Segment tools on the simulated laps, drawing into the test folder.
+def _tools(tmp_path: Path, driven: Run | None = None) -> StoreTools:
+    """Store tools on the simulated laps, drawing into the test folder.
     In:  tmp_path  Path
-    Out:           SegmentTools
+         driven    Run | None  the run to read; None = five laps of the oval
+    Out:           StoreTools
     """
-    tracker, rivals, live = _trackers()
-    return SegmentTools(tracker, rivals, live, CornerPlotter(tmp_path, 60.0, 0.05, 0.05), FINDINGS, 150.0)
+    driven = driven or run(tmp_path)
+    plotter = CornerPlotter(tmp_path, 60.0, 0.05, 0.05)
+    return StoreTools(driven.store, driven.tracker, plotter, 150.0)
 
 
 @pytest.mark.parametrize(
     ("effort", "question", "tool", "arguments"),
     [
         ("low", "How are my tyres?", "car_health", {}),
-        ("medium", "Where am I losing time in turn 1?", "corner_analysis", {"corner": "turn 1", "lap": 2}),
-        ("high", "Where can I find time over the lap?", "lap_losses", {"lap": 2}),
+        (
+            "medium",
+            "Where am I losing time in turn 1?",
+            "lap_data",
+            {"car": "", "lap": "4", "part": "turn 1", "against": "car"},
+        ),
+        (
+            "high",
+            "Where can I find time over the lap?",
+            "lap_data",
+            {"car": "", "lap": "last", "part": "", "against": "car"},
+        ),
     ],
 )
 def test_question_is_routed_answered_with_a_tool_and_spoken(
@@ -164,30 +132,23 @@ def test_question_is_routed_answered_with_a_tool_and_spoken(
     assert main.calls[0]["max_tokens"] == MAX_TOKENS[effort]
     assert main.calls[0]["system"][0]["cache_control"] == {"type": "ephemeral", "ttl": "1h"}
     strict = {schema["name"]: schema["strict"] for schema in main.calls[0]["tools"]}
-    assert strict == {
-        "lap_losses": True,
-        "this_lap": False,
-        "live_corners": True,
-        "corner_analysis": True,
-        "corner_plot": True,
-        "rival_comparison": True,
-        "car_health": False,
-    }
+    assert strict == {"lap_data": True, "corner_plot": True, "corner_lines": True, "car_health": False}
     result = main.calls[1]["messages"][2]["content"][0]
     assert (result["type"], result["tool_use_id"], result["is_error"]) == ("tool_result", "call_1", False)
     output = json.loads(result["content"])
     if tool == "car_health":
         assert (output["compound_front"], output["wheels"], output["track_temp_c"]) == ("Medium", {}, 30.0)
-    elif tool == "corner_analysis":
-        assert (output["lap"], output["best_lap"], output["name"]) == (2, 3, "turn 1")
-        assert output["vs_best"]["findings"][0].endswith(" m earlier")
-        assert output["vs_best"]["lost_s"] > 0.0
+    elif arguments["part"]:
+        assert (output["lap"], output["name"], output["in_progress"]) == (4, "turn 1", False)
+        assert (output["vs"]["reference"], output["vs"]["reference_lap_s"]) == ("lap 3", 39.5)
         assert output["entry"]["brake_point_m"] < output["mid"]["min_speed_m"]
+        assert set(output["other_references"]) == {"class", "track"}
     else:
-        assert (output["lap"], output["best_lap"], output["analysed_laps"]) == (2, 3, [2, 3, 4])
-        assert output["theoretical_best_s"] <= output["best_lap_time_s"]
+        assert (output["lap"], output["reference"], output["time_s"], output["lost_s"]) == (4, "lap 3", 40.5, 1.0)
+        assert [sector["name"] for sector in output["sectors"]] == ["sector 1", "sector 2", "sector 3"]
+        assert output["theoretical_best_s"] <= 39.5
         assert output["segments"][0]["lost_s"] >= output["segments"][-1]["lost_s"]
-        assert {s["name"] for s in output["segments"]} >= {"turn 1", "turn 2", "straight 1"}
+        assert {s["name"] for s in output["segments"]} == {"straight 1", "turn 1", "straight 2", "turn 2", "straight 3"}
 
 
 def test_corner_plot_is_saved_and_shown_to_the_model(tmp_path: Path) -> None:
@@ -195,30 +156,35 @@ def test_corner_plot_is_saved_and_shown_to_the_model(tmp_path: Path) -> None:
     agent, _, main = _agent(
         tmp_path,
         "medium",
-        _reply("tool_use", _tool_use("corner_plot", corner="Turn 1", lap=2, against="", their_last_lap=False)),
+        _reply("tool_use", _tool_use("corner_plot", corner="Turn 1", lap="4", against="car")),
         _reply("end_turn", _text("Brake later.")),
     )
     assert agent.answer("Why am I slow in turn 1?") == "Brake later."
     picture, note = main.calls[1]["messages"][2]["content"][0]["content"]
     assert (picture["type"], picture["source"]["media_type"]) == ("image", "image/png")
-    assert (tmp_path / "lap 2 turn 1 against lap 3.png").read_bytes().startswith(b"\x89PNG")
-    assert note["text"].endswith("lap 2 turn 1 against lap 3.png")
+    assert (tmp_path / "lap 4 turn 1 against lap 3.png").read_bytes().startswith(b"\x89PNG")
+    assert note["text"].endswith("lap 4 turn 1 against lap 3.png")
 
 
-def test_unknown_corner_or_lap_is_unavailable(tmp_path: Path) -> None:
-    """A segment the track does not have or a lap that was not analysed gives no data."""
+def test_unknown_car_lap_or_part_is_unavailable(tmp_path: Path) -> None:
+    """A segment the track does not have, a lap that was not recorded, a car nobody drives or a lap that had no
+    reference to be drawn against gives no data."""
     tools = _tools(tmp_path)
-    assert tools.corner_analysis("turn 9", 0) == {"available": False}
-    assert tools.corner_plot("turn 1", 7, "", False) == {"available": False}
-    assert tools.corner_plot("turn 1", 0, "nobody", False) == {"available": False}
-    assert tools.rival_comparison("nobody", "", False) == {"available": False, "drivers": ["Rival One"]}
-    assert tools.lap_losses(7) == {"available": False}
+    assert tools.lap_data("", "4", "turn 9", "car") == {"available": False}
+    assert tools.lap_data("", "7", "", "car") == {"available": False}
+    assert tools.lap_data("nobody", "last", "", "me") == {"available": False}
+    assert tools.lap_data("", "last", "", "nobody") == {"available": False}
+    assert tools.corner_plot("turn 1", "7", "car") == {"available": False}
+    assert tools.corner_plot("turn 1", "4", "nobody") == {"available": False}
+    assert tools.corner_plot("turn 1", "2", "car") == {"available": False}
+    assert tools.corner_lines("nobody", "turn 1", "best") == {"available": False}
+    assert tools.corner_lines("rival", "turn 9", "best") == {"available": False}
 
 
 def test_failing_tool_is_reported_to_the_model(tmp_path: Path) -> None:
     """A tool call that raises goes back as an error result and the model still answers."""
     agent, _, main = _agent(
-        tmp_path, "low", _reply("tool_use", _tool_use("lap_losses", lap=0, extra=1)), _reply("end_turn", _text("No."))
+        tmp_path, "low", _reply("tool_use", _tool_use("lap_data", car="", extra=1)), _reply("end_turn", _text("No."))
     )
     assert agent.answer("Turn 1?") == "No."
     assert main.calls[1]["messages"][2]["content"][0]["is_error"] is True
@@ -232,40 +198,45 @@ def test_reply_without_text_gives_the_error_reply(tmp_path: Path) -> None:
 
 def test_schema_requires_every_typed_argument(tmp_path: Path) -> None:
     """A typed function becomes a strict tool with all its arguments required."""
-    schema = tool_schema(_tools(tmp_path).corner_analysis)
-    assert schema["name"] == "corner_analysis"
-    assert schema["description"].startswith("Everything the driver did in one corner")
+    schema = tool_schema(_tools(tmp_path).lap_data)
+    assert schema["name"] == "lap_data"
+    assert schema["description"].startswith("Times and time lost of any car")
+    names = ["car", "lap", "part", "against"]
     assert schema["input_schema"] == {
         "type": "object",
-        "properties": {"corner": {"type": "string"}, "lap": {"type": "integer"}},
-        "required": ["corner", "lap"],
+        "properties": {name: {"type": "string"} for name in names},
+        "required": names,
         "additionalProperties": False,
     }
 
 
-def test_rival_comparison_ranks_the_lap_and_details_a_corner(tmp_path: Path) -> None:
-    """Against the fastest car of the class: the segments by time lost, and for one corner both cars' figures, the
-    difference and the line; the plot against the rival is saved under its name."""
+def test_driver_against_another_car_and_the_other_way_round(tmp_path: Path) -> None:
+    """Best against best and last against last come from the recorded times of both cars, per sector and per
+    segment; asked for the other car, the signs turn round. One corner in detail and its plot come from the lines."""
     tools = _tools(tmp_path)
-    lap = tools.rival_comparison("", "", False)
-    assert (lap["driver"], lap["their_lap_time_s"], lap["my_lap"]) == ("Rival One", 39.0, 3)
-    assert sum(s["lost_s"] for s in lap["segments"]) == pytest.approx(0.5, abs=0.02)
-    assert lap["segments"][0]["lost_s"] >= lap["segments"][-1]["lost_s"]
-    corner = tools.rival_comparison("rival", "Turn 1", False)
-    assert corner["name"] == "turn 1"
+    best = tools.lap_data("", "best", "", "rival")
+    assert (best["against"], best["lap"], best["their_lap"]) == ("Rival One", 3, 3)
+    assert (best["time_s"], best["their_time_s"], best["lost_s"]) == (39.5, 39.0, 0.5)
+    assert best["segments"][0]["lost_s"] >= best["segments"][-1]["lost_s"]
+    last = tools.lap_data("", "last", "", "Rival")
+    assert (last["lap"], last["time_s"], last["their_time_s"], last["lost_s"]) == (4, 40.5, 40.0, 0.5)
+    assert len(last["segments"]) == 5
+    assert all(abs(segment["lost_s"]) < 0.2 for segment in last["segments"])
+    assert tools.lap_data("rival", "last", "", "me")["lost_s"] == -0.5
+    sector = tools.lap_data("", "last", "sector 1", "rival")
+    assert {segment["name"] for segment in sector["segments"]} == {"straight 1", "turn 1"}
+    corner = tools.corner_lines("", "Turn 1", "best")
+    assert (corner["name"], corner["my_lap"], corner["driver"], corner["their_lap"]) == ("turn 1", 3, "Rival One", 3)
+    assert tools.corner_lines("rival", "turn 1", "4")["their_lap_time_s"] == 40.0
     assert corner["difference"]["min_kph"] == pytest.approx(0.0, abs=0.1)
-    assert corner["me"]["slowing_point_m"] == pytest.approx(corner["them"]["slowing_point_m"], abs=4.0)
     assert abs(corner["line_wider_m"]) == pytest.approx(3.0, abs=0.5)
-    assert tools.corner_plot("turn 1", 3, "rival", False).name == "lap 3 turn 1 against Rival One best lap.png"
-    assert tools.corner_plot("turn 1", 0, "rival", True).name == "lap 4 turn 1 against Rival One last lap.png"
-
-
-def test_rival_comparison_of_the_last_laps(tmp_path: Path) -> None:
-    """With last_lap the driver's last analysed lap is compared with the other car's last full lap."""
-    lap = _tools(tmp_path).rival_comparison("", "", True)
-    assert (lap["laps_compared"], lap["my_lap"]) == ("last", 4)
-    assert (lap["my_lap_time_s"], lap["their_lap_time_s"]) == (40.5, 40.0)
-    assert sum(s["lost_s"] for s in lap["segments"]) == pytest.approx(0.5, abs=0.02)
+    assert tools.corner_plot("turn 1", "4", "rival").name == "lap 4 turn 1 against Rival One lap 4.png"
+    assert tools.corner_plot("turn 1", "4", "fastest").name == "lap 4 turn 1 against Rival One lap 4.png"
+    assert tools.corner_plot("turn 1", "best", "rival").name == "lap 3 turn 1 against Rival One lap 3.png"
+    assert tools.corner_plot("turn 1", "last", "my best").name == "lap 4 turn 1 against my lap 3.png"
+    assert tools.corner_plot("turn 1", "4", "my lap 2").name == "lap 4 turn 1 against my lap 2.png"
+    fastest = tools.lap_data("", "best", "", "fastest")
+    assert (fastest["against"], fastest["lap"], fastest["their_lap"], fastest["lost_s"]) == ("Rival One", 3, 3, 0.5)
 
 
 def test_warming_writes_the_cache_without_asking_for_output(tmp_path: Path) -> None:
@@ -275,39 +246,46 @@ def test_warming_writes_the_cache_without_asking_for_output(tmp_path: Path) -> N
     assert router.calls == []
     assert main.calls[0]["max_tokens"] == 0
     assert main.calls[0]["system"][0]["cache_control"] == {"type": "ephemeral", "ttl": "1h"}
-    assert len(main.calls[0]["tools"]) == 7
+    assert len(main.calls[0]["tools"]) == 4
 
 
-def test_best_lap_and_class_fastest_comparisons(tmp_path: Path) -> None:
-    """Lap -1 is the driver's best lap; the lap ranking also says where it loses to the fastest lap of the class,
-    and a corner also gives the fastest pass of the class."""
+def test_class_fastest_and_sector_comparisons(tmp_path: Path) -> None:
+    """Against "class" a corner is compared with the fastest lap of the class, from the line and the speed of that
+    car; a sector gives its time, the time lost and its segments."""
     tools = _tools(tmp_path)
-    losses = tools.lap_losses(-1)
-    assert (losses["lap"], losses["best_lap"]) == (3, 3)
-    fastest = losses["against_fastest_in_class"]
-    assert (fastest["driver"], fastest["their_lap_time_s"], len(fastest["segments"])) == ("Rival One", 39.0, 5)
-    assert fastest["segments"][0]["lost_s"] >= fastest["segments"][-1]["lost_s"]
-    corner = tools.corner_analysis("turn 1", -1)
-    assert corner["fastest_pass_in_class"]["driver"] == "Rival One"
-    assert abs(corner["fastest_pass_in_class"]["line_wider_m"]) == pytest.approx(3.0, abs=0.5)
+    corner = tools.lap_data("", "best", "turn 1", "class")
+    assert (corner["lap"], corner["vs"]["reference"]) == (3, "Rival One")
+    assert abs(corner["vs"]["line_wider_m"]) == pytest.approx(3.0, abs=0.5)
+    assert corner["other_references"]["car"]["reference"] == "lap 2"
+    sector = tools.lap_data("", "4", "sector 1", "car")
+    assert (sector["name"], sector["reference"]) == ("sector 1", "lap 3")
+    assert {segment["name"] for segment in sector["segments"]} == {"straight 1", "turn 1"}
+    assert sector["lost_s"] == pytest.approx(sum(s["lost_s"] for s in sector["segments"]), abs=0.3)
 
 
-def test_lap_in_progress_and_live_corners(tmp_path: Path) -> None:
-    """Part of a new lap braked 20 m earlier: the corner already left is on this lap with what was different, and
-    the driver's latest pass of each segment is set against the rival's."""
-    tracker, rivals, live = _trackers()
-    tools = SegmentTools(tracker, rivals, live, CornerPlotter(tmp_path, 60.0, 0.05, 0.05), FINDINGS, 150.0)
-    assert [s["name"] for s in tools.this_lap()["segments"]] == ["turn 2", "straight 2", "turn 1", "straight 1"]
-    lap = with_rival(oval_lap(5, 40.5, brake_zone_m=120.0), "Rival One", 40.0, shift_x_m=3.0)
-    for snapshot in lap[: len(lap) * 2 // 3]:
-        tracker.update(snapshot)
-        live.update(snapshot)
-    now = tools.this_lap()
+def test_lap_in_progress_against_the_best_lap_and_against_another_car(tmp_path: Path) -> None:
+    """Part of a new lap braked 20 m earlier: the segments already left are there, latest first, with what was
+    different, the sector that is complete, the plot of the corner just driven, and the same segments against the
+    other car's latest pass of each."""
+    driven = run(tmp_path)
+    tools = _tools(tmp_path, driven)
+    assert (tools.lap_data("", "now", "", "car")["lap"], tools.lap_data("", "last", "", "car")["lap"]) == (5, 4)
+    driven.drive(5, 40.5, 120.0, share=0.66)
+    now = tools.lap_data("", "now", "", "car")
+    assert (now["lap"], now["in_progress"], now["time_s"]) == (6, True, None)
     assert [s["name"] for s in now["segments"]] == ["straight 2", "turn 1", "straight 1"]
     assert now["segments"][1]["findings"][0].endswith(" m earlier")
-    assert now["lost_so_far_s"] == pytest.approx(sum(s["lost_s"] for s in now["segments"]), abs=0.02)
-    corners = tools.live_corners("")
-    assert corners["driver"] == "Rival One"
-    assert {"turn 1", "straight 1"} <= {s["name"] for s in corners["segments"]}
-    assert all(abs(s["lost_s"]) < 0.1 for s in corners["segments"])
-    assert tools.live_corners("nobody") == {"available": False}
+    assert now["lost_s"] == pytest.approx(sum(s["lost_s"] for s in now["segments"]), abs=0.02)
+    assert [sector["name"] for sector in now["sectors"]] == ["sector 1"]
+    assert tools.corner_plot("turn 1", "now", "car").name == "lap 6 turn 1 against lap 3.png"
+    fight = tools.lap_data("", "now", "", "rival")
+    assert (fight["against"], fight["their_lap"]) == ("Rival One", None)
+    assert [s["name"] for s in fight["segments"]] == ["straight 2", "turn 1", "straight 1"]
+    assert all(abs(s["lost_s"]) < 0.1 for s in fight["segments"])
+
+
+def test_corner_made_of_two_turns_is_found_by_either_number() -> None:
+    """A segment that holds two official turns answers to each of them, and to nothing else."""
+    assert _named("turn 9 and 10", "turn 10") and _named("turn 9 and 10", "turn 9")
+    assert _named("arnage", "arnage")
+    assert not _named("turn 9 and 10", "turn 1") and not _named("straight 10", "turn 10")

@@ -8,7 +8,7 @@ from ai_race_engineer.strategy.race_finish import strategy_resource
 from ai_race_engineer.strategy.race_state import RaceState, RaceTracker
 from ai_race_engineer.strategy.rejoin import predict_rejoin
 from ai_race_engineer.strategy.rivals import laps_to_catch
-from ai_race_engineer.strategy.sector_delta import Splits, sector_delta, splits
+from ai_race_engineer.strategy.sector_delta import Splits, splits
 from ai_race_engineer.strategy.traffic import TrafficCar, find_traffic
 
 UNAVAILABLE: dict[str, object] = {"available": False}
@@ -199,47 +199,6 @@ class RaceTools:
             }
         return result
 
-    def compare_sectors(self, driver: str = "") -> dict[str, object]:
-        """Where the driver loses or gains time against another car, sector by sector: last-lap and best sector
-        times of both, the differences (positive = the driver is slower) and the sector that loses the most. Leave
-        driver empty for the car directly ahead in class, or give a driver's name.
-        In:  driver  str  driver name or part of it; empty = the car ahead in class
-        Out:         dict[str, object]  s in the keys; None for a sector without a valid time; {"available": False}
-                                        without a race state or when no car matches
-        """
-        state = self._tracker.state
-        if state is None:
-            return UNAVAILABLE
-        player = next(v for v in state.vehicles if v.slot_id == state.player_slot_id)
-        other = (
-            next((v for v in state.vehicles if driver.lower() in v.driver_name.lower() and v is not player), None)
-            if driver
-            else class_references(player, state.vehicles).get("ahead")
-        )
-        if other is None:
-            return UNAVAILABLE
-        player_last, player_best = _last_splits(state, player.slot_id), _best_splits(state, player.slot_id)
-        other_last, other_best = _last_splits(state, other.slot_id), _best_splits(state, other.slot_id)
-        delta = sector_delta(player_last, player_best, other_last, other_best)
-        return {
-            "driver": other.driver_name,
-            "sectors": [
-                {
-                    "sector": index + 1,
-                    "my_last_s": player_last[index],
-                    "their_last_s": other_last[index],
-                    "last_delta_s": delta.last_delta_s[index],
-                    "my_best_s": player_best[index],
-                    "their_best_s": other_best[index],
-                    "best_delta_s": delta.best_delta_s[index],
-                }
-                for index in range(3)
-            ],
-            "last_lap_delta_s": delta.last_total_delta_s,
-            "best_sectors_delta_s": delta.best_total_delta_s,
-            "losing_most_in_sector": delta.worst_sector,
-        }
-
     def traffic(self) -> dict[str, object]:
         """Cars of other classes the driver will meet on the road in the next laps: slower cars ahead that the
         driver catches and faster cars behind that catch the driver, each with the gap on the road now, the closing
@@ -275,7 +234,7 @@ class RaceTools:
     def tools(self) -> list[Callable[..., object]]:
         """The functions an agent may call.
         In:  -
-        Out: list[Callable[..., object]]  race_finish, my_race, rivals, pit_stop, my_pace, compare_sectors, traffic,
+        Out: list[Callable[..., object]]  race_finish, my_race, rivals, pit_stop, my_pace, traffic,
                                           set_rival_updates
         """
         return [
@@ -284,7 +243,6 @@ class RaceTools:
             self.rivals,
             self.pit_stop,
             self.my_pace,
-            self.compare_sectors,
             self.traffic,
             self.set_rival_updates,
         ]

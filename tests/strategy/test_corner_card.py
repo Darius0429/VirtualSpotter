@@ -34,7 +34,7 @@ def _samples() -> LapSamples:
     In:  -
     Out: LapSamples
     """
-    return lap_samples([s.player for s in oval_lap(0)], LENGTH_M, LAP_TIME_S)
+    return lap_samples([s.player for s in oval_lap(0)], LAP_TIME_S)
 
 
 def _cards(samples: LapSamples) -> tuple[SegmentCard, ...]:
@@ -126,7 +126,7 @@ def test_lap_shares_and_theoretical_best() -> None:
     shares = lap_shares(samples, LIMITS)
     assert shares.full_throttle + shares.braking + shares.coasting == pytest.approx(1.0)
     assert shares.braking == pytest.approx(2 * (100.0 / 43.0) / NATURAL_LAP_S, rel=0.1)
-    fast, slow = _cards(samples), _cards(lap_samples([s.player for s in oval_lap(0)], LENGTH_M, 42.0))
+    fast, slow = _cards(samples), _cards(lap_samples([s.player for s in oval_lap(0)], 42.0))
     mixed = (slow[0], fast[1], slow[2])
     assert theoretical_best_s([mixed, slow]) == pytest.approx(slow[0].time_s + fast[1].time_s + slow[2].time_s)
 
@@ -141,3 +141,16 @@ def test_braking_for_the_corner_before_is_not_this_corners_brake_point() -> None
     gap = (samples.distance_m > 190.0) & (samples.distance_m < 210.0)
     twice = dataclasses.replace(samples, brake=np.where(gap, 0.0, samples.brake))
     assert _cards(twice)[1].entry.brake_point_m == pytest.approx(TURN_1_M[0] - 100.0, abs=4.0)
+
+
+def test_trail_braking_leaves_out_the_load_of_the_corner_before() -> None:
+    """Braking that starts while the car is still loaded the other way from the corner before counts as trail
+    braking only from where the car turns into this corner."""
+    samples = _samples()
+    distance_m = samples.distance_m
+    lat_g = samples.lat_g.copy()
+    lat_g[(distance_m >= TURN_1_M[0] - 100.0) & (distance_m < TURN_1_M[0] - 50.0)] = -0.9
+    lat_g[(distance_m >= TURN_1_M[0] - 30.0) & (distance_m < TURN_1_M[0])] = 0.9
+    entry = _cards(dataclasses.replace(samples, lat_g=lat_g))[1].entry
+    assert entry.braking_m == pytest.approx(100.0, abs=6.0)
+    assert entry.trail_brake_m == pytest.approx(30.0, abs=6.0)

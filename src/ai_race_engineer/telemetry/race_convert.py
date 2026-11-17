@@ -43,6 +43,8 @@ def lap_sectors(scoring: VehicleScoring) -> LapSectors:
         slot_id=scoring.mID,
         last_sector1_s=scoring.mLastSector1 if scoring.mLastSector1 > 0 else None,
         last_sector2_cum_s=scoring.mLastSector2 if scoring.mLastSector2 > 0 else None,
+        sector1_s=scoring.mCurSector1 if scoring.mCurSector1 > 0 else None,
+        sector2_cum_s=scoring.mCurSector2 if scoring.mCurSector2 > 0 else None,
     )
 
 

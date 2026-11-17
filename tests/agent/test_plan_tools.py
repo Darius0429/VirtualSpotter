@@ -229,10 +229,10 @@ def test_add_note_confirms_the_lap() -> None:
     assert _tools(_state()).add_note("understeer in turn 4") == "Noted on lap 3."
 
 
-def test_all_sixteen_tools_are_registered() -> None:
-    """The eight race tools and the eight plan tools are offered to the agent."""
+def test_all_fifteen_tools_are_registered() -> None:
+    """The seven race tools and the eight plan tools are offered to the agent."""
     names = [tool.__name__ for tool in _tools(None).tools()]
-    assert len(names) == len(set(names)) == 16
+    assert len(names) == len(set(names)) == 15
     assert names[-8:] == [
         "race_plan",
         "saving",

@@ -60,6 +60,8 @@ SCORING_COLUMNS: tuple[str, ...] = (
     "mBestSector2",
     "mLastSector1",
     "mLastSector2",
+    "mCurSector1",
+    "mCurSector2",
     "mTimeBehindNext",
     "mLapsBehindNext",
     "mTimeBehindLeader",
