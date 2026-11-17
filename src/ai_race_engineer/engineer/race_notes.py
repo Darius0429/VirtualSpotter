@@ -6,7 +6,7 @@ from collections.abc import Sequence
 from anthropic import Anthropic, APIError
 
 from ai_race_engineer.engineer.prompts import RACE_NOTES_PROMPT, RACE_SUMMARY_PROMPT
-from ai_race_engineer.domains.common.recording.run_log import RunLog
+from ai_race_engineer.domains.base import RunLog
 
 logger = logging.getLogger(__name__)
 

@@ -1,6 +1,7 @@
 import queue
 from types import SimpleNamespace
 
+from ai_race_engineer.domains.base import Domain, Happening
 from ai_race_engineer.domains.lmu.energy_tools import EnergyTools
 from ai_race_engineer.domains.common.tools.history_tools import HistoryTools
 from ai_race_engineer.engineer.race_story import RaceStory
@@ -38,6 +39,40 @@ class _Timeline:
         """
         self.stored.append(TimelineEntry(0.0, 0, kind, text, fields))
         return self.stored[-1]
+
+
+class _Domain:
+    """Stand-in for a domain: the lap history, the tracker and the timeline are stand-ins, the happenings, the
+    speech queue and the timeline entries are handled by the real methods of Domain.
+    _lap_history  SimpleNamespace         laps: the digests of the finished race laps
+    _tracker      SimpleNamespace         finished: the race is over for the player
+    _timeline     _Timeline
+    _callouts     queue.Queue[Callout]    what was said
+    _waiting      queue.Queue[Happening]  "lap" and "finish" waiting for the engineer
+    _queued       int
+    _summed       bool
+    """
+
+    update = Domain._feed_happenings
+    happenings = Domain.happenings
+    wait_happening = Domain.wait_happening
+    say = Domain.say
+    record = Domain.record
+
+    def __init__(self, history: SimpleNamespace, tracker: SimpleNamespace, timeline: _Timeline) -> None:
+        """Hold the stand-ins and start with nothing queued.
+        In:  history   SimpleNamespace
+             tracker   SimpleNamespace
+             timeline  _Timeline
+        Out:           None
+        """
+        self._lap_history: SimpleNamespace = history
+        self._tracker: SimpleNamespace = tracker
+        self._timeline: _Timeline = timeline
+        self._callouts: queue.Queue[Callout] = queue.Queue()
+        self._waiting: queue.Queue[Happening] = queue.Queue()
+        self._queued: int = 0
+        self._summed: bool = False
 
 
 class _Writer:
@@ -80,22 +115,27 @@ def test_each_finished_race_lap_gets_notes_and_the_flag_a_spoken_summary() -> No
     lap_9, lap_10 = _digests()
     history = SimpleNamespace(laps=())
     tracker = SimpleNamespace(finished=False)
-    timeline, writer, callouts = _Timeline(), _Writer(), queue.Queue()
-    story = RaceStory(history, tracker, timeline, writer, callouts)
-    story.update(None)
+    timeline, writer = _Timeline(), _Writer()
+    domain = _Domain(history, tracker, timeline)
+    callouts = domain._callouts
+    snapshot = SimpleNamespace(
+        session=SimpleNamespace(elapsed_s=0.0), player=SimpleNamespace(vehicle=SimpleNamespace(completed_laps=0))
+    )
+    story = RaceStory(domain, writer)
+    domain.update(snapshot)
     history.laps = (lap_9,)
-    story.update(None)
-    story.update(None)
+    domain.update(snapshot)
+    domain.update(snapshot)
     history.laps = (lap_9, lap_10)
-    story.update(None)
+    domain.update(snapshot)
     story.step()
     story.step()
     assert [d["lap"] for d in writer.digests] == [9, 10]
     assert writer.stories == [[], ["Lap 9: you are P3"]]
     assert [e.text for e in timeline.stored] == ["Lap 9: you are P3", "Lap 10: you are P2"]
     tracker.finished = True
-    story.update(None)
-    story.update(None)
+    domain.update(snapshot)
+    domain.update(snapshot)
     story.step()
     callout: Callout = callouts.get_nowait()
     assert (callout.kind, callout.text) == ("race_summary", "Good race, 2 notes, 2 laps.")

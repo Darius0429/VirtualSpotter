@@ -82,6 +82,7 @@ def _agent(tmp_path: Path, effort: str, *replies: SimpleNamespace) -> tuple[Clau
         max_tokens=MAX_TOKENS,
         log=RunLog(tmp_path, False, lambda: 0.0),
         context=lambda: "Now: race, on lap 5, at turn 1.",
+        system="You are a race engineer.",
     )
     return agent, router, main
 

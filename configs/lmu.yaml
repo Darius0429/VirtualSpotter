@@ -1,0 +1,221 @@
+source:
+  poll_hz: 20
+  pit_estimate:
+    url: http://127.0.0.1:6397/rest/strategy/pitstop-estimate
+    period_s: 5.0
+    timeout_s: 1.0
+  garage:
+    url: http://127.0.0.1:6397/rest/garage/getPlayerGarageData
+    period_s: 5.0              # read once at start, then only while the player is in the pits or garage
+    timeout_s: 1.0
+analysis:
+  consumption_window_laps: 3
+  track_maps: configs/track_maps   # one JSON file per track layout with its corners and straights; the stored ones carry
+                                   # the real-life turn numbers or names, an unknown track is learned from the first lap
+  best_laps: data/processed/best_laps   # the driver's best lap per track and car, kept across sessions
+  corner_plots: data/plots     # folder of the corner plots the agent draws
+  segment_store: data/segments # one SQLite file per run: every segment, sector and lap of every car as it finished
+  segments:
+    keep_laps: 30              # analysed laps kept, with their telemetry
+    map:                       # how an unknown track is split into corners and straights
+      step_m: 5.0              # spacing the driven line is resampled to
+      smooth_m: 55.0           # window of the smoothing filter
+      max_radius_m: 400.0      # path radius below which the line is a corner
+      min_turn_deg: 18.0       # the line must turn this much in a corner; less is a kink or a weave on a straight
+      entry_pad_m: 150.0       # added before a corner to hold the braking
+      exit_pad_m: 50.0         # added after a corner to hold the exit
+      merge_gap_m: 30.0        # corners closer than this become one (chicanes, esses)
+    card:                      # what counts as an event in a corner
+      brake_on: 0.05           # 0-1 brake above which the driver is braking
+      throttle_on: 0.05        # 0-1 throttle above which the driver is on the throttle
+      full_throttle: 0.95      # 0-1 throttle from which the driver is at full throttle
+      throttle_lift: 0.05      # 0-1 drop of the throttle between two samples that counts as a lift
+      turn_in_g: 0.5           # g lateral acceleration from which the car is turning in
+      lock_ratio: 0.85         # wheel speed over car speed below which a braked wheel is locking
+      spin_ratio: 1.08         # wheel speed over car speed above which a rear wheel is spinning
+      search_m: 150.0          # m before a corner in which its braking is looked for
+      after_exit_m: 150.0      # m after a corner where the speed is taken again
+    findings:                  # differences to the best lap from which something is said
+      distance_m: 5.0          # brake point, full throttle and a locked wheel; half of it for the line at the apex
+      speed_kph: 2.0
+      decel_g: 0.1
+      time_s: 0.15             # coasting, countersteering, wheelspin
+    plot_margin_m: 60.0        # m shown before and after the corner in a plot
+race:
+  pace_window_laps: 8
+  projection_period_s: 1.0     # session seconds between recomputations
+  traffic_horizon_laps: 5.0    # traffic the player meets within this many laps is reported when asked
+  traffic_callout_laps: 1.0    # traffic reached within this many laps is said without being asked
+  traffic_pack_gap_m: 100.0    # cars no further apart than this on the road are one pack
+  lift_coast_saving_percent_per_lap: [0.10, 0.30]   # energy that lifting and coasting saves per lap, low and high
+  lift_coast_cost_s_per_lap: 0.3   # lap time a lap of lifting and coasting costs
+  contacts:                    # contact found from the impacts the game reports for every car
+    min_magnitude: 100.0       # impact magnitude from which a hit counts (kerbs and light touches are below)
+    hard_magnitude: 500.0      # a hit of another car with no car near is kept from this magnitude
+    near_m: 12.0               # another car within this distance is the one that was touched
+    hold_s: 3.0                # further impacts of the same car within this time are the same contact
+  fuel_margin_laps: 0.2        # laps the fuel may be short of the energy before 'fuel runs out first'
+  strategy_start_laps: 5       # laps the player completes before measured pace and usage replace the pre-race
+                               # figures and before rival callouts start
+  pit:
+    rates:                     # defaults until calibrated in the session
+      fuel_rate_l_per_s: 3.0   # Bahrain stop: about 30 L against the game's 10.1 s
+      energy_rate_per_s: 0.025 # fraction/s = 0.4 s per 1 %; fit of 649 game estimates: 1.0 s + 0.400 s per 1 %
+      scale: 1.0               # game estimate 22.9 s against 22.6 s measured stationary (Bahrain)
+      base_s: 1.0              # fixed s per stop that adds energy or fuel (fit: 1.0 s + 0.400 s per 1 %)
+    default_lane:              # used only for a track missing from tracks.yaml with no pass measured yet
+      time_s: 31.0
+      length_m: 470.0
+    stop_speed_mps: 0.5        # below this in the pits a car counts as stationary
+    traffic_window_s: 3.0      # cars within this of the rejoin point count as traffic
+  rivals:
+    pace_window_s: 0.3
+    finish_window_s: 15.0      # projected gap at the flag within which a car becomes a strategy rival
+    finish_window_exit_s: 20.0 # projected gap beyond which it stops being one
+    min_rival_s: 60.0          # session seconds a strategy rival stays one (and is not announced again) whatever its gap
+  rival_watch:
+    pace_change_s: 0.3
+    low_laps: 2.0
+    announce_groups: [ahead, behind, strategy]
+  flags:
+    sector_yellow_value: 1     # mSectorFlag value that means yellow
+    sector_of_index: [1, 2, 3] # sector number of mSectorFlag[0], [1], [2]
+    clear_hold_s: 3.0          # a sector must stay clear this long before 'Sector n clear'
+  priors:
+    pace_factor: 1.0           # race pace = factor * a qualifying or best lap
+    history_sessions: 5        # sessions per track and car the history figures are the median of
+    max_qualifying_age_h: 6.0  # a qualifying results file older than this is not this event's
+  grid_briefing:
+    max_cars: 3                # cars named in the spoken briefing
+    standing_speed_mps: 5.0    # below this the driver is standing on the grid
+    min_energy_delta: 0.005    # fraction; energy differences below this are not mentioned
+    max_wait_s: 20.0           # session seconds the briefing waits for the qualifying times and the player's energy
+                               # figure before it is given without them
+  saving:
+    max_saving_fraction: 0.05  # share of the usage per lap that is realistic to save
+    min_laps: 5                # clean laps needed before a cost is estimated
+    min_spread: 0.01           # the lowest lap must use this share less than the mean before a cost is estimated
+  lap_history:
+    loss_s: 3.0                      # s a lap must be slower than a car's pace to be marked as time lost
+    trend_laps: 5                    # laps back over which the gap trend is given
+callouts:
+  low_fuel_laps: 2.0
+  low_energy_laps: 2.0
+  plan_briefing_hold_s: 20.0   # s the pre-race plan must stay the same before it is read out
+  enabled:                     # SessionType names; no event calls the model, each speaks a fixed sentence
+    fastest_lap: [RACE]        # a new overall fastest lap, else the driver's new personal best
+    overall_best: [QUALIFY]    # a new overall fastest lap only
+    personal_best: [PRACTICE]  # the driver's new personal best only
+    sector_comparison: [QUALIFY]   # a car of the class goes faster than the driver: said when it crosses the line
+    traffic: [RACE]            # slower traffic reached within the next lap: a pack, a single car or backmarkers
+    plan_briefing: [WARMUP, RACE]   # the race plan read once before the start
+    low_fuel: []               # off; was [PRACTICE, RACE]
+    spotter: []                # off; was [PRACTICE, QUALIFY, WARMUP, RACE]
+    rival_watch: []            # off: rivals are tracked and stored, not announced; was [RACE]
+    flags: []                  # off; was [PRACTICE, QUALIFY, WARMUP, RACE]
+    grid_briefing: []          # off; was [RACE]
+  spotter:
+    car_length_m: 4.8            # centre-to-centre distance at which bumpers meet
+    car_width_m: 2.0             # cars with |lateral| < width/2 are not "beside"
+    lateral_range_m: 6.0         # max |lateral| still counted as beside
+    longitudinal_overlap_m: 0.5  # extra margin added to car_length_m (warn slightly early)
+    clear_hold_s: 0.6            # a side must be empty this long before "clear"
+    repeat_suppress_s: 2.0       # min time from a side's "car X" to its "clear" (only delays clears)
+    min_speed_mps: 8.0           # spotter silent (and reset) below this player speed or in pits
+speech:
+  poll_hz: 20
+  gate:
+    urgent_priority: SPOTTER   # Priority name; at or above is spoken at once
+    max_age_s: 15.0            # queued non-urgent messages older than this are dropped
+  straight:                    # live detector, also labels samples for learning
+    max_steering: 0.08         # |steering| fraction of lock
+    max_lateral_mps2: 5.0
+    min_speed_mps: 30.0
+    hold_s: 1.0
+  learned:
+    learn_laps: 3              # clean laps before the learned straights take over
+    bin_m: 20.0                # lap-distance bin (scoring lap distance steps at 5 Hz)
+    min_fraction: 0.8          # share of a bin's samples that must be straight
+    min_length_m: 150.0        # shorter straights are dropped
+    min_remaining_s: 4.0       # straight time that must be left to start speaking
+devices:
+  sample_rate_hz: 16000        # Whisper and the Vosk models are 16 kHz mono
+  poll_hz: 50                  # button polling
+  talk:
+    mode: HOLD                 # HOLD = record while held; TOGGLE = press to start, press to stop
+    max_s: 15.0                # recording is cut here
+  filter:
+    min_audio_s: 0.4           # shorter recordings are dropped (accidental press)
+    min_words: 2               # fewer words are dropped (noise is often heard as "the")
+  button:
+    kind: joystick             # joystick | keyboard
+    device_name: "La Prima Wheel"            # joystick: part of the name printed by scripts/setup_voice.py button
+    button: 8                  # joystick: button index printed by the same script
+    key_vk: 123                # Windows virtual-key code used when kind is keyboard (123 = F12)
+  microphone:
+    device: null               # null = Windows default input; else index or name from scripts/setup_voice.py microphones
+  stt:
+    engine: whisper            # whisper (local, free) | elevenlabs (API) | vosk (local, weakest)
+    recordings: data/voice     # every question is kept here as a WAV file named after what was heard
+  elevenlabs_stt:
+    model: scribe_v2
+    language: en
+  vosk:
+    model_dir: models/vosk-model-en-us-0.22-lgraph
+  whisper:
+    model: base.en             # faster-whisper model, downloaded on first use; small.en is 3x slower and no better here
+    compute_type: int8
+    prompt: >-                 # words the driver uses; the model leans towards them
+      Race engineer radio in Le Mans Ultimate. Words used: pit, box, stint, undercut, overcut, lift and coast,
+      virtual energy, fuel, tyre temps, pressures, lock up, GT3 traffic, Hypercar, LMP2, P2, turn ten, apex, sector,
+      did someone hit me, contact, crash, catch the car ahead, losing time, fastest lap overall, slow in turn thirteen.
+  tts:
+    engine: radio              # radio = ElevenLabs voice with the radio sound added locally; print = text on screen only
+    api_key_env: TTS_API_KEY   # environment variable that holds the ElevenLabs key
+    voice_id: JBFqnCBsd6RMkjVDRZzb   # ElevenLabs voice (George, British)
+    model: eleven_flash_v2_5   # the fast model: about 0.4 s for a radio message
+    sample_rate_hz: 22050      # PCM rate asked for and played
+    device: null               # output device; null = Windows default; else index or name from scripts/setup_voice.py
+    radio:                     # the radio sound, added in code so it is the same every time
+      low_hz: 350.0            # the band the radio passes
+      high_hz: 3000.0
+      drive: 6.0               # gain into the soft clipper; higher is more distorted
+      level: 0.6               # loudness of the voice
+      hiss: 0.012              # noise under the voice
+      static_level: 0.25       # loudness of the static bursts
+      static_in_s: 0.22        # static before the voice
+      static_out_s: 0.15       # static after the voice
+history:
+  sessions_root: data/sessions            # one YAML summary per session
+  history_file: data/history/sessions.jsonl   # one line of figures per session, append-only
+  refresh_s: 60.0                         # s between rewrites of the running session's summary
+  period_s: 1.0                           # s between checks for a new or ended session
+  class_top: 5                            # cars of the class listed in a summary (plus the player's neighbours)
+  track_field: TrackCourse                # results-file field equal to the game's track name (TrackVenue is equal too)
+  results_margin_s: 300.0                 # s a results file's start may differ from the start the engineer saw
+  timeline:
+    resume_margin_s: 120.0     # s two session starts may differ and still be the same session (restart of the engineer)
+    max_entries: 30            # entries the agent tool returns at most (newest kept)
+    builder:
+      yellow_clear_hold_s: 3.0   # session s a sector must stay clear before the clear is recorded
+      position_hold_s: 5.0       # session s a swap in class must hold before it is recorded
+      min_best_lap_gain_s: 0.1   # s a best lap must improve on the last recorded one
+      min_energy_change: 0.02    # fraction of energy the first-stop amount must move to count as a plan change
+      min_fuel_change_l: 1.0     # litres the first-stop amount of a car without virtual energy must move
+      rival_groups: [ahead, behind, strategy]   # rival groups whose members are recorded (set changes, pit stops)
+      plan_place_hold_laps: 2    # consecutive lap checks a new projected class place must hold to count as a plan change
+      rival_hold_s: 30.0         # session s a car must be in, or out of, the rival set before that is recorded
+log:
+  enabled: true                # one switch; --no-log overrides it
+  root: data/logs              # one folder per process start
+  level: INFO                  # stdlib logging level written to log.jsonl
+  state_period_s: 5.0          # session s between RaceState snapshots
+  health_period_s: 10.0        # s between timing-health records
+  restart_wait_s: 1.0          # s before a failed thread loop is started again
+recorder:
+  root: data/raw/sessions      # one folder per recorded session
+  poll_hz: 200                 # shared-memory polls per second (100 Hz player telemetry ticks must not be missed)
+  flush_s: 1.0                 # seconds between batch writes to disk
+  part_s: 300                  # seconds per Parquet part file (a hard kill loses at most the open part)
+  h5_root: data/raw/telemetry  # old TinyPedal telemetry.h5 folders
+tracks: configs/tracks.yaml

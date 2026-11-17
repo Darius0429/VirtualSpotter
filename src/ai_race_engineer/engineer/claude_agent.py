@@ -8,10 +8,10 @@ from pathlib import Path
 from anthropic import Anthropic, APIError
 from anthropic.types.beta import BetaMessage, BetaToolUseBlock
 
+from ai_race_engineer.domains.base import RunLog
 from ai_race_engineer.engineer.base import Agent, answer_with_retries
-from ai_race_engineer.engineer.prompts import EFFORT_PROMPT, SYSTEM_PROMPT
+from ai_race_engineer.engineer.prompts import EFFORT_PROMPT
 from ai_race_engineer.engineer.tool_schema import tool_schema
-from ai_race_engineer.domains.common.recording.run_log import RunLog
 
 EFFORT_FORMAT: dict[str, object] = {
     "type": "json_schema",
@@ -41,6 +41,7 @@ class ClaudeAgent(Agent):
     _max_tokens    Mapping[str, int]                 effort -> output token limit, thinking included
     _log           RunLog
     _context       Callable[[], str]                 one line that says where the driver is now
+    _system        str                               system prompt: the engineer's role, then the domain's instructions
     """
 
     def __init__(
@@ -53,6 +54,7 @@ class ClaudeAgent(Agent):
         max_tokens: Mapping[str, int],
         log: RunLog,
         context: Callable[[], str],
+        system: str,
     ) -> None:
         """Store the client, the tools with their definitions and the models.
         In:  client        Anthropic
@@ -63,6 +65,7 @@ class ClaudeAgent(Agent):
              max_tokens    Mapping[str, int]                "low" | "medium" | "high" -> output token limit
              log           RunLog
              context       Callable[[], str]                one line that says where the driver is now
+             system        str                              system prompt
         Out:               None
         """
         self._client: Anthropic = client
@@ -74,6 +77,7 @@ class ClaudeAgent(Agent):
         self._max_tokens: Mapping[str, int] = max_tokens
         self._log: RunLog = log
         self._context: Callable[[], str] = context
+        self._system: str = system
 
     def answer(self, question: str) -> str:
         """Answer one question, without earlier turns.
@@ -154,7 +158,7 @@ class ClaudeAgent(Agent):
         return self._client.beta.messages.create(
             model=self._model,
             max_tokens=max_tokens,
-            system=[{"type": "text", "text": SYSTEM_PROMPT, "cache_control": cache}],
+            system=[{"type": "text", "text": self._system, "cache_control": cache}],
             tools=self._schemas,
             messages=messages,
             output_config={"effort": effort},

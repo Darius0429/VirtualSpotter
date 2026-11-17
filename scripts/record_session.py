@@ -13,15 +13,15 @@ from ai_race_engineer.domains.rf2.rf2_frames import RF2FrameSource
 FRAME_SOURCES: dict[str, type[FrameSource]] = {"lmu": LMUFrameSource, "rf2": RF2FrameSource}
 
 
-def main(game: Path = Path("configs/game.yaml"), recorder: Path = Path("configs/recorder.yaml")) -> None:
+def main(domain: str = "lmu", config: Path | None = None) -> None:
     """Record every live session to Parquet until Ctrl+C.
-    In:  game      Path  game config YAML (game)
-         recorder  Path  recorder config YAML (root, poll_hz, flush_s, part_s)
-    Out:           None
+    In:  domain  str          key of FRAME_SOURCES, e.g. "lmu"
+         config  Path | None  the domain's YAML (recorder: root, poll_hz, flush_s, part_s); None = configs/<domain>.yaml
+    Out:         None
     """
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
-    game_cfg, rec_cfg = (yaml.safe_load(p.read_text()) for p in (game, recorder))
-    source: FrameSource = FRAME_SOURCES[game_cfg["game"]]()
+    rec_cfg = yaml.safe_load((config or Path(f"configs/{domain}.yaml")).read_text())["recorder"]
+    source: FrameSource = FRAME_SOURCES[domain]()
     rec = SessionRecorder(
         source, ParquetSessionWriter(rec_cfg["part_s"]), Path(rec_cfg["root"]), rec_cfg["poll_hz"], rec_cfg["flush_s"]
     )

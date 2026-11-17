@@ -8,15 +8,15 @@ from ai_race_engineer.domains.common.store.results_import import import_report, 
 from ai_race_engineer.domains.common.data.results_file import most_flagged_player
 
 
-def main(folder: Path, driver: str = "", history: Path = Path("configs/history.yaml")) -> None:
+def main(folder: Path, driver: str = "", config: Path = Path("configs/lmu.yaml")) -> None:
     """Fill the history from the game's results files; it can be run again at any time, files already imported are
     skipped. Nothing is written into the results folder.
     In:  folder   Path  the game's results folder (<game>/UserData/Log/Results)
          driver   str   the player's driver name; "" = the name flagged as the player in the most files
-         history  Path  history config YAML (history_file, track_field)
+         config   Path  the domain's YAML (history: history_file, track_field)
     Out:          None
     """
-    hist_cfg = yaml.safe_load(history.read_text())
+    hist_cfg = yaml.safe_load(config.read_text())["history"]
     store = HistoryStore(Path(hist_cfg["history_file"]))
     paths = sorted(folder.glob("*.xml"))
     name, flagged = (driver, 0) if driver else most_flagged_player(paths)

@@ -35,7 +35,7 @@ _retries: Retries = Retries(attempts=1, retry_wait_s=0.0, error_reply="")
 
 
 def configure_retries(attempts: int, retry_wait_s: float, error_reply: str) -> None:
-    """Set how every agent tries a failed model round trip again (from configs/agent.yaml, once at start; until then
+    """Set how every agent tries a failed model round trip again (from configs/engineer.yaml, once at start; until then
     a question is tried once and a failure gives an empty reply).
     In:  attempts      int    tries per question
          retry_wait_s  float  s to wait between two tries

@@ -20,23 +20,17 @@ from ai_race_engineer.domains.rf2.rf2 import RF2Source
 SOURCES: dict[str, type[TelemetrySource]] = {"lmu": LMUSource, "rf2": RF2Source}
 
 
-def main(
-    game: Path = Path("configs/game.yaml"),
-    strategy: Path = Path("configs/strategy.yaml"),
-    events: Path = Path("configs/events.yaml"),
-    spotter: Path = Path("configs/spotter.yaml"),
-) -> None:
+def main(domain: str = "lmu", config: Path | None = None) -> None:
     """Print live race callouts (fastest lap, sectors, low fuel/energy, spotter).
-    In:  game      Path  game config YAML (game, poll_hz)
-         strategy  Path  strategy config YAML (consumption_window_laps)
-         events    Path  events config YAML (thresholds, enabled per session type)
-         spotter   Path  spotter config YAML (Spotter constructor args)
-    Out:           None
+    In:  domain  str          key of SOURCES, e.g. "lmu"
+         config  Path | None  the domain's YAML (source, analysis, callouts); None = configs/<domain>.yaml
+    Out:         None
     """
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
-    game_cfg, strat_cfg, ev_cfg, spot_cfg = (yaml.safe_load(p.read_text()) for p in (game, strategy, events, spotter))
-    source: TelemetrySource = SOURCES[game_cfg["game"]]()
-    consumption = ConsumptionTracker(window_laps=strat_cfg["consumption_window_laps"])
+    cfg = yaml.safe_load((config or Path(f"configs/{domain}.yaml")).read_text())
+    ev_cfg = cfg["callouts"]
+    source: TelemetrySource = SOURCES[domain]()
+    consumption = ConsumptionTracker(window_laps=cfg["analysis"]["consumption_window_laps"])
     callouts: queue.Queue[Callout] = queue.Queue()
     monitor = EventMonitor(
         source,
@@ -44,12 +38,12 @@ def main(
             FastestLap(),
             SectorComparison(),
             LowFuel(consumption, ev_cfg["low_fuel_laps"], ev_cfg["low_energy_laps"]),
-            Spotter(**spot_cfg),
+            Spotter(**ev_cfg["spotter"]),
         ],
         ev_cfg["enabled"],
         consumption,
         callouts,
-        game_cfg["poll_hz"],
+        cfg["source"]["poll_hz"],
     )
     with source:
         threading.Thread(target=monitor.run, daemon=True).start()

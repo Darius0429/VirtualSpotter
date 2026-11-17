@@ -1,0 +1,34 @@
+source:
+  poll_hz: 20
+analysis:
+  consumption_window_laps: 3
+callouts:
+  low_fuel_laps: 2.0
+  low_energy_laps: 2.0
+  plan_briefing_hold_s: 20.0   # s the pre-race plan must stay the same before it is read out
+  enabled:                     # SessionType names; no event calls the model, each speaks a fixed sentence
+    fastest_lap: [RACE]        # a new overall fastest lap, else the driver's new personal best
+    overall_best: [QUALIFY]    # a new overall fastest lap only
+    personal_best: [PRACTICE]  # the driver's new personal best only
+    sector_comparison: [QUALIFY]   # a car of the class goes faster than the driver: said when it crosses the line
+    traffic: [RACE]            # slower traffic reached within the next lap: a pack, a single car or backmarkers
+    plan_briefing: [WARMUP, RACE]   # the race plan read once before the start
+    low_fuel: []               # off; was [PRACTICE, RACE]
+    spotter: []                # off; was [PRACTICE, QUALIFY, WARMUP, RACE]
+    rival_watch: []            # off: rivals are tracked and stored, not announced; was [RACE]
+    flags: []                  # off; was [PRACTICE, QUALIFY, WARMUP, RACE]
+    grid_briefing: []          # off; was [RACE]
+  spotter:
+    car_length_m: 4.8            # centre-to-centre distance at which bumpers meet
+    car_width_m: 2.0             # cars with |lateral| < width/2 are not "beside"
+    lateral_range_m: 6.0         # max |lateral| still counted as beside
+    longitudinal_overlap_m: 0.5  # extra margin added to car_length_m (warn slightly early)
+    clear_hold_s: 0.6            # a side must be empty this long before "clear"
+    repeat_suppress_s: 2.0       # min time from a side's "car X" to its "clear" (only delays clears)
+    min_speed_mps: 8.0           # spotter silent (and reset) below this player speed or in pits
+recorder:
+  root: data/raw/sessions      # one folder per recorded session
+  poll_hz: 200                 # shared-memory polls per second (100 Hz player telemetry ticks must not be missed)
+  flush_s: 1.0                 # seconds between batch writes to disk
+  part_s: 300                  # seconds per Parquet part file (a hard kill loses at most the open part)
+  h5_root: data/raw/telemetry  # old TinyPedal telemetry.h5 folders

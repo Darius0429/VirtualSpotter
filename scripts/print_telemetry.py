@@ -16,18 +16,17 @@ from ai_race_engineer.domains.rf2.rf2 import RF2Source
 SOURCES: dict[str, type[TelemetrySource]] = {"lmu": LMUSource, "rf2": RF2Source}
 
 
-def main(game: Path = Path("configs/game.yaml"), strategy: Path = Path("configs/strategy.yaml")) -> None:
+def main(domain: str = "lmu", config: Path | None = None) -> None:
     """Print live telemetry, standings, consumption and nearby-car offsets.
-    In:  game      Path  game config YAML (game, poll_hz)
-         strategy  Path  strategy config YAML (consumption_window_laps)
-    Out:           None
+    In:  domain  str          key of SOURCES, e.g. "lmu"
+         config  Path | None  the domain's YAML (source, analysis); None = configs/<domain>.yaml
+    Out:         None
     """
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
-    game_cfg = yaml.safe_load(game.read_text())
-    strat_cfg = yaml.safe_load(strategy.read_text())
-    source: TelemetrySource = SOURCES[game_cfg["game"]]()
-    fuel = LapConsumption(window_laps=strat_cfg["consumption_window_laps"])
-    energy = LapConsumption(window_laps=strat_cfg["consumption_window_laps"])
+    cfg = yaml.safe_load((config or Path(f"configs/{domain}.yaml")).read_text())
+    source: TelemetrySource = SOURCES[domain]()
+    fuel = LapConsumption(window_laps=cfg["analysis"]["consumption_window_laps"])
+    energy = LapConsumption(window_laps=cfg["analysis"]["consumption_window_laps"])
     with source:
         while True:
             snap = source.read()
@@ -49,7 +48,7 @@ def main(game: Path = Path("configs/game.yaml"), strategy: Path = Path("configs/
                     else energy.update(me.completed_laps, snap.player.virtual_energy),
                     offsets.round(1),
                 )
-            time.sleep(1 / game_cfg["poll_hz"])
+            time.sleep(1 / cfg["source"]["poll_hz"])
 
 
 if __name__ == "__main__":

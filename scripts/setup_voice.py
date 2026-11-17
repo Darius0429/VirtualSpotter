@@ -41,7 +41,7 @@ def microphones() -> None:
     Out: None
     """
     print(input_devices())
-    print("set microphone.device in configs/voice.yaml to the index or name (null = default)")
+    print("under devices: in configs/lmu.yaml set microphone.device to the index or name (null = default)")
 
 
 @app.command()
@@ -53,18 +53,18 @@ def button() -> None:
     print(joystick_names())
     print("press the button you want to talk with...")
     name, index = wait_for_press(50.0)
-    print(f'under button: in configs/voice.yaml set\n  device_name: "{name}"\n  button: {index}')
+    print(f'under devices: button: in configs/lmu.yaml set\n  device_name: "{name}"\n  button: {index}')
 
 
 @app.command()
-def listen(voice: Path = Path("configs/voice.yaml"), compare: bool = False) -> None:
+def listen(config: Path = Path("configs/lmu.yaml"), compare: bool = False) -> None:
     """Test the talk button, microphone and speech-to-text: print every question heard until Ctrl+C.
-    In:  voice    Path  voice-input config YAML
+    In:  config   Path  the domain's YAML (devices)
          compare  bool  run every speech-to-text engine on each question and print what each heard and how long
                         it took, instead of only the configured one
     Out: None
     """
-    cfg = yaml.safe_load(voice.read_text())
+    cfg = yaml.safe_load(config.read_text())["devices"]
     rate = cfg["sample_rate_hz"]
     questions = VoiceQuestions(
         BUTTONS[cfg["button"]["kind"]](cfg["button"]),

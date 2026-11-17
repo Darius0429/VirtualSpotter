@@ -32,7 +32,7 @@ class Callout:
 
 class Event(ABC):
     """Common interface for all race-situation detectors.
-    name  ClassVar[str]  key in configs/events.yaml
+    name  ClassVar[str]  key under callouts: enabled in the domain config
     """
 
     name: ClassVar[str]
