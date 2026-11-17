@@ -622,7 +622,7 @@ class Domain(ABC):
         """
         if self._replay is None or not self._ask_recorded:
             return None
-        state_file = self._replay.resolve().parent.parent / "engineer" / "state.jsonl"
+        state_file = self._replay.absolute().parent.parent / "engineer" / "state.jsonl"
         if not state_file.is_file():
             print(f"no recorded questions found ({state_file}), ask your own")
             return None
