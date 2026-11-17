@@ -28,6 +28,7 @@ from ai_race_engineer.domains.common.analysis.pace.straight_live import LiveStra
 from ai_race_engineer.domains.common.analysis.session.lap_history import LapHistory
 from ai_race_engineer.domains.common.analysis.session.session_log import SessionLog
 from ai_race_engineer.domains.common.analysis.session.timeline_builder import TimelineBuilder
+from ai_race_engineer.domains.common.analysis.session.track_limits import TrackLimitTracker
 from ai_race_engineer.domains.common.analysis.strategy.consumption import ConsumptionTracker
 from ai_race_engineer.domains.common.analysis.strategy.pit_log import PitStopLog
 from ai_race_engineer.domains.common.analysis.strategy.pit_time import PitLane, PitRates
@@ -221,6 +222,9 @@ class Domain(ABC):
             lambda: straight.segments(),
             race_cfg["flags"]["sector_yellow_value"],
             now_unix,
+            lambda: lap_types.ended,
+            lambda: limits.status,
+            hist_cfg["count_yellow_flags"],
         )
         self._keeper: SessionKeeper = SessionKeeper(
             session_log,
@@ -296,7 +300,9 @@ class Domain(ABC):
             CardLimits(**seg_cfg["card"]),
             **seg_cfg["map"],
         )
-        self._context: RaceContext = RaceContext(tracker, segments)
+        self._context: RaceContext = RaceContext(
+            tracker, segments, lambda: lap_types.in_progress(), lambda: limits.status
+        )
         rival_lines = RivalLineTracker()
         live_segments = LiveSegmentTracker(lambda: segments.segments)
         lap_types = LapTypeTracker()
@@ -323,12 +329,16 @@ class Domain(ABC):
                 seg_cfg["card"]["throttle_on"],
             ),
             seg_cfg["card"]["search_m"],
+            lap_types.in_progress,
         )
         laps_cfg = race_cfg["lap_history"]
         self._lap_history: LapHistory = LapHistory(
             tracker, self._timeline.entries, laps_cfg["loss_s"], laps_cfg["trend_laps"], self.run_log
         )
         contacts = ContactTracker(self._timeline.add, lambda: segments.segments, **race_cfg["contacts"])
+        limits = TrackLimitTracker(
+            self._timeline.add, lambda: segments.segments, race_cfg["track_limits"]["apex_window_m"]
+        )
         self._source: RaceSource = source
         self._first_observers: list[Callable[[RaceSnapshot], None]] = [
             clock.update,
@@ -343,6 +353,7 @@ class Domain(ABC):
             tracker.update,
             self._timeline.update,
             contacts.update,
+            limits.update,
             self._lap_history.update,
             self._feed_happenings,
             straight.update,

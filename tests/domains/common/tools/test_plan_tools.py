@@ -243,3 +243,32 @@ def test_all_fifteen_tools_are_registered() -> None:
         "notes",
         "track_history",
     ]
+
+
+class _StoredKeeper(_Keeper):
+    """Stand-in for the session keeper with one stored race.
+    yellow_flags  int | None  the yellow-flag count of the stored summary
+    """
+
+    def __init__(self, yellow_flags: int | None) -> None:
+        """Store the count.
+        In:  yellow_flags  int | None
+        Out:               None
+        """
+        self.yellow_flags: int | None = yellow_flags
+
+    def past_summary(self, kind: str, skip_running: bool) -> dict[str, object]:
+        """The stored race.
+        In:  kind          str
+             skip_running  bool
+        Out:               dict[str, object]
+        """
+        return {"kind": kind, "yellow_flags": self.yellow_flags, "player": {"laps": 3, "lap_list": []}}
+
+
+def test_session_summary_leaves_out_yellow_flags_that_are_not_counted() -> None:
+    """A summary without a yellow-flag count has no such key; a counted one keeps it."""
+    uncounted = PlanTools(None, None, 3.0, None, None, _StoredKeeper(None), None, 0.05, 5, 0.01)
+    assert uncounted.session_summary("race") == {"kind": "race", "player": {"laps": 3}}
+    counted = PlanTools(None, None, 3.0, None, None, _StoredKeeper(4), None, 0.05, 5, 0.01)
+    assert counted.session_summary("race")["yellow_flags"] == 4

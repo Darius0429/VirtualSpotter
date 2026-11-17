@@ -234,11 +234,16 @@ class PlanTools(RaceTools):
     def session_summary(self, session: str = "current") -> dict[str, object]:
         """Summary of a session of the driver on this track: class place and places gained, laps, best lap,
         theoretical best, clean pace, best sectors, energy per lap, pit stops, incidents and penalties when known,
-        the top of the class and the notes. Use "current" for the running session, or "practice", "qualifying",
-        "race" for the newest one of that kind, or "last_race" for the newest race before the running session.
+        the top of the class and the notes. Track limits are in it too: invalid_laps is the number of laps the game
+        flagged for track limits and did not time (out laps and in laps are not invalid), and limits holds the
+        track-limit points the driver has (points), the points at which a penalty comes (penalty_points), the
+        penalties outstanding (penalties) and every offence with its lap and its place on the track (events). Use
+        "current" for the running session, or "practice", "qualifying", "race" for the newest one of that kind, or
+        "last_race" for the newest race before the running session.
         In:  session  str  "current" | "practice" | "qualifying" | "race" | "last_race"
         Out:          dict[str, object]  the SessionSummary fields without the lap list (lap times in s, energy as a
-                                         fraction); {"available": False} when there is no such session
+                                         fraction) and without yellow_flags when they are not counted;
+                                         {"available": False} when there is no such session
         """
         if session == "current":
             current = self._keeper.summary()
@@ -247,13 +252,15 @@ class PlanTools(RaceTools):
             summary = self._keeper.past_summary(SESSION_KINDS[session], session == "last_race")
         if summary is None:
             return UNAVAILABLE
-        return {**summary, "player": {k: v for k, v in summary["player"].items() if k != "lap_list"}}
+        shown = {k: v for k, v in summary.items() if k != "yellow_flags" or v is not None}
+        return {**shown, "player": {k: v for k, v in summary["player"].items() if k != "lap_list"}}
 
     def driver_laps(self, driver: str = "", session: str = "current") -> dict[str, object]:
         """Lap by lap data. For the driver's own car leave driver empty: every lap of the session with lap time,
-        sectors, energy and fuel used, class place, tyres and whether it was a pit or a non-green lap. For another
-        driver in the running session: the recent clean laps, best and last lap. For an earlier session ("practice",
-        "qualifying", "race") the laps come from the game's results file.
+        sectors, energy and fuel used, class place, tyres, whether it was a pit or a non-green lap, and lap_type:
+        what the lap was ("lap", "first lap", "out lap", "in lap", "invalid lap", "aborted lap"). For another
+        driver in the running session: the recent clean laps, best and last lap. For an earlier session ("practice", "qualifying",
+        "race") the laps come from the game's results file.
         In:  driver   str  driver name or part of it; empty = the player
              session  str  "current" | "practice" | "qualifying" | "race" | "last_race"
         Out:          dict[str, object]  "driver" and "laps" (or the clean-lap window); {"available": False} when the

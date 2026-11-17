@@ -4,6 +4,7 @@ import pytest
 
 from ai_race_engineer.domains.common.analysis.strategy.pit_time import PitStopSample
 from ai_race_engineer.domains.common.analysis.session.session_log import Note, PlayerLap, SessionRecord
+from ai_race_engineer.domains.common.analysis.session.track_limits import TrackLimitEvent, TrackLimitStatus
 from ai_race_engineer.domains.common.analysis.session.session_summary import (
     results_of_session,
     summarise,
@@ -36,13 +37,19 @@ def _vehicle(slot_id: int, place: int, driver_name: str, class_name: str = "Hype
 
 
 def _lap(
-    lap: int, lap_time_s: float, sectors: tuple[float, float, float], energy: float | None = 0.045, **flags: bool
+    lap: int,
+    lap_time_s: float,
+    sectors: tuple[float, float, float],
+    energy: float | None = 0.045,
+    lap_type: str | None = "lap",
+    **flags: bool,
 ) -> PlayerLap:
     """Lap of the player using 0.65 litres per 1 % energy.
     In:  lap         int
          lap_time_s  float                        s
          sectors     tuple[float, float, float]   s
          energy      float | None                 fraction used
+         lap_type    str | None                   what the lap was
          flags       bool                         timed, pitted, green overrides
     Out:             PlayerLap
     """
@@ -61,6 +68,7 @@ def _lap(
         "Medium",
         values["pitted"],
         values["green"],
+        lap_type,
     )
 
 
@@ -77,7 +85,7 @@ def _record() -> SessionRecord:
         _lap(1, 114.0, (38.0, 48.0, 28.0), green=False),
         _lap(2, 107.0, (32.0, 48.0, 27.0)),
         _lap(3, 106.5, (32.2, 47.5, 26.8), 0.044),
-        _lap(4, 108.0, (32.1, 48.4, 27.5), 0.046, timed=False),
+        _lap(4, 108.0, (32.1, 48.4, 27.5), 0.046, "invalid lap", timed=False),
         _lap(5, 111.0, (32.5, 48.5, 30.0), 0.042, pitted=True),
     )
     notes = (Note(450.0, 5, "Pit stop lap 5: 22.6 s stationary", True), Note(300.0, 3, "understeer", False))
@@ -151,6 +159,25 @@ def test_summary_of_the_players_session() -> None:
     assert (player.clean_pace_s, player.clean_laps, player.invalid_laps) == (107.0, 3, 1)
 
 
+def test_only_laps_the_game_took_away_are_invalid() -> None:
+    """Out laps and in laps have no time either but are not invalid; only the lap type counts."""
+    record = _record()
+    untimed = (
+        _lap(6, 150.0, (40.0, 60.0, 50.0), None, "out lap", timed=False, pitted=True),
+        _lap(7, 140.0, (33.0, 49.0, 58.0), None, "in lap", timed=False, pitted=True),
+        _lap(8, 109.0, (32.4, 48.6, 28.0), None, None, timed=False),
+    )
+    player = summarise(dataclasses.replace(record, laps=record.laps + untimed), "Car A", 3).player
+    assert player.invalid_laps == 1
+
+
+def test_track_limits_are_passed_through() -> None:
+    """The summary carries the track limits and penalties of the record; a record without them gives None."""
+    limits = TrackLimitStatus(0.25, 5.0, 1, (TrackLimitEvent(300.0, 3, 1, 455.0, "apex of turn 2"),))
+    assert summarise(_record(), "Car A", 3).player.limits is None
+    assert summarise(dataclasses.replace(_record(), limits=limits), "Car A", 3).player.limits == limits
+
+
 def test_usage_and_pit_stops_of_the_session() -> None:
     """Energy per lap is the mean of the clean laps, the stint what a full load lasts; the player's stop carries
     the lap of its note."""
@@ -185,6 +212,8 @@ def test_summary_from_a_results_file() -> None:
     assert (player.clean_pace_s, player.clean_laps, player.energy_per_lap) == (106.5, 2, None)
     assert [stop.lap for stop in player.pit_stops] == [3]
     assert (player.incidents, player.track_limit_warnings) == (1, 1)
+    assert (player.invalid_laps, player.limits) == (None, None)
+    assert [lap.lap_type for lap in player.lap_list] == ["lap", "lap", "in lap", "lap", "lap"]
     assert summary_from_results(_results(), "stem", "TrackCourse", 3, "nobody") is None
 
 

@@ -4,10 +4,12 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 
+from ai_race_engineer.domains.common.analysis.corners.lap_types import IN_LAP, LAP, LapEnd
 from ai_race_engineer.domains.common.analysis.field.field import CarEstimate
 from ai_race_engineer.domains.common.analysis.strategy.pit_time import PitStopSample
 from ai_race_engineer.domains.common.analysis.field.race_state import FINISH_STATUS_FINISHED
 from ai_race_engineer.domains.common.analysis.pace.sector_delta import splits
+from ai_race_engineer.domains.common.analysis.session.track_limits import TrackLimitStatus
 from ai_race_engineer.domains.common.data.race_snapshot import GAME_PHASE_GREEN, GAME_PHASE_OVER, RaceSnapshot
 from ai_race_engineer.domains.common.data.snapshot import SessionState, VehicleState
 
@@ -30,6 +32,8 @@ class PlayerLap:
     pitted          bool          the car was in the pits during the lap
     green           bool          the lap started at a line crossing and the game phase was green for the whole lap
                                   (clean = green and not pitted)
+    lap_type        str | None    "lap" | "out lap" | "in lap" | "invalid lap" | "first lap" as the lap types name
+                                  it; None when the lap was not seen from its start and has no time
     """
 
     lap: int
@@ -46,6 +50,7 @@ class PlayerLap:
     compound_rear: str
     pitted: bool
     green: bool
+    lap_type: str | None = None
 
 
 @dataclass(frozen=True)
@@ -79,12 +84,14 @@ class SessionRecord:
     grid_class_place  int                        the player's place in class at the first snapshot
     laps              tuple[PlayerLap, ...]      the player's completed laps
     notes             tuple[Note, ...]
-    yellow_flags      int                        times a sector flag turned yellow
+    yellow_flags      int | None                 times a sector flag turned yellow; None when they are not counted
     pit_samples       tuple[PitStopSample, ...]  measured pit-lane passes of any car
     estimates         Mapping[int, CarEstimate]  slot id -> pace and usage measured in the session (no priors)
     straights         tuple[tuple[float, float], ...]  (start m, end m) of the learned straights
     finished          bool                       the finish was seen: the player took the chequered flag or the game
                                                  phase was over
+    limits            TrackLimitStatus | None    the player's track limits and penalties; None when the source has
+                                                 none
     """
 
     session_id: str
@@ -100,11 +107,12 @@ class SessionRecord:
     grid_class_place: int
     laps: tuple[PlayerLap, ...]
     notes: tuple[Note, ...]
-    yellow_flags: int
+    yellow_flags: int | None
     pit_samples: tuple[PitStopSample, ...]
     estimates: Mapping[int, CarEstimate]
     straights: tuple[tuple[float, float], ...]
     finished: bool = False
+    limits: TrackLimitStatus | None = None
 
 
 class SessionLog:
@@ -117,6 +125,9 @@ class SessionLog:
     _straights            Callable[[], tuple[tuple[float, float], ...]]  the learned straights
     _sector_yellow_value  int                       mSectorFlag value that means yellow
     _now_unix             Callable[[], float]       s unix time now
+    _lap_ends             Callable[[], tuple[LapEnd, ...]]            the laps that ended at the latest snapshot
+    _limits               Callable[[], TrackLimitStatus | None]       the player's track limits and penalties
+    _count_yellow_flags   bool                      the record gives the yellow-flag count
     _session              SessionState | None       session of the latest snapshot; None before the first
     _session_id           str
     _started_unix         float                     s unix time of the session's first snapshot
@@ -145,6 +156,9 @@ class SessionLog:
         straights: Callable[[], tuple[tuple[float, float], ...]],
         sector_yellow_value: int,
         now_unix: Callable[[], float],
+        lap_ends: Callable[[], tuple[LapEnd, ...]],
+        limits: Callable[[], TrackLimitStatus | None],
+        count_yellow_flags: bool,
     ) -> None:
         """Store the sources read when a record is built.
         In:  pit_samples          Callable[[], tuple[PitStopSample, ...]]        measured pit-lane passes so far
@@ -153,6 +167,12 @@ class SessionLog:
              sector_yellow_value  int                                            mSectorFlag value that means yellow
              now_unix             Callable[[], float]                            s unix time now (of the recording in
                                                                                  a replay)
+             lap_ends             Callable[[], tuple[LapEnd, ...]]               the laps that ended at the latest
+                                                                                 snapshot, already fed with it
+             limits               Callable[[], TrackLimitStatus | None]          the player's track limits and
+                                                                                 penalties
+             count_yellow_flags   bool                                           False = the record's yellow_flags is
+                                                                                 None
         Out:                      None
         """
         self.ended: queue.Queue[SessionRecord] = queue.Queue()
@@ -161,6 +181,9 @@ class SessionLog:
         self._straights: Callable[[], tuple[tuple[float, float], ...]] = straights
         self._sector_yellow_value: int = sector_yellow_value
         self._now_unix: Callable[[], float] = now_unix
+        self._lap_ends: Callable[[], tuple[LapEnd, ...]] = lap_ends
+        self._limits: Callable[[], TrackLimitStatus | None] = limits
+        self._count_yellow_flags: bool = count_yellow_flags
         self._session: SessionState | None = None
         self._session_id: str = ""
         self._started_unix: float = 0.0
@@ -265,11 +288,14 @@ class SessionLog:
         self._finished = False
 
     def _lap(self, snapshot: RaceSnapshot) -> PlayerLap:
-        """The lap the player just completed.
+        """The lap the player just completed. Its type is the name of the player's lap end at this snapshot; without
+        one, "in lap" when the line was crossed in the pit lane, else "lap" when the game timed it.
         In:  snapshot  RaceSnapshot  first snapshot after the line crossing
         Out:           PlayerLap
         """
         player = snapshot.player.vehicle
+        ended = next((end.name for end in self._lap_ends() if end.vehicle.slot_id == player.slot_id), None)
+        untyped = IN_LAP if player.in_pits else LAP if player.last_lap_s is not None else None
         sectors = next((s for s in snapshot.sectors if s.slot_id == player.slot_id), None)
         sector_s = (
             (None, None, None)
@@ -291,6 +317,7 @@ class SessionLog:
             compound_rear=snapshot.player.tyre_compound_rear,
             pitted=self._pitted or player.in_pits,
             green=self._green and snapshot.flags.game_phase == GAME_PHASE_GREEN,
+            lap_type=ended or untyped,
         )
 
     def _note_stops(self, completed_laps: int) -> None:
@@ -326,11 +353,12 @@ class SessionLog:
             grid_class_place=self._grid_class_place,
             laps=self._laps,
             notes=self._notes,
-            yellow_flags=self._yellow_flags,
+            yellow_flags=self._yellow_flags if self._count_yellow_flags else None,
             pit_samples=self._pit_samples(),
             estimates=self._estimates(),
             straights=self._straights(),
             finished=self._finished,
+            limits=self._limits(),
         )
 
 

@@ -38,4 +38,12 @@ LMU_INSTRUCTIONS: str = """# What to look up
    where and when, then lap data of that lap for what it cost. How the race went or a summary: the timeline story
    notes, which are your own notes of what mattered.
 12. If the driver asks to stop or resume rival updates, call the tool that switches them and confirm.
+13. Lap kinds, track limits and penalties: the line in square brackets names the lap in progress (lap, out lap,
+   first lap, invalid lap), lap data gives it as lap_type, and every row of driver laps has its lap_type (also in
+   lap, aborted lap, retired). The game starts judging when the car leaves the track and stops timing the lap; when
+   it lets the offence go the lap is timed again, so "invalid lap" for the lap in progress can still come back.
+   Invalid laps in the session summary are only laps the game took away. Track limits are in the session summary
+   under limits: points held, the points at which a penalty comes, penalties outstanding, and each offence with its
+   lap and place; the timeline has them as track_limits and penalty. During a session the game gives only the
+   number of penalties; what each one is comes with the results after the session. Yellow flags are not counted.
 """

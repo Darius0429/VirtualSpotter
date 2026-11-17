@@ -88,3 +88,49 @@ def test_first_lap_of_a_race_and_the_garage_after_the_flag() -> None:
         session = dataclasses.replace(base.session, elapsed_s=float(second))
         tracker.update(dataclasses.replace(base, vehicles=(vehicle,), session=session, flags=flag))
     assert tracker.ended == ()
+
+
+def _in_progress(*steps: tuple[int, dict[str, object]], race: bool = False) -> str | None:
+    """What a tracker says of the lap the player is driving after the car went through some states one second apart.
+    In:  steps  tuple[int, dict[str, object]]  completed laps and the fields of the car that differ from a car on
+                                               track with the game timing its lap
+         race   bool                           the session is a race, else qualifying
+    Out:        str | None
+    """
+    tracker = LapTypeTracker()
+    base: RaceSnapshot = oval_lap(0)[0]
+    kind = SessionType.RACE if race else SessionType.QUALIFY
+    for second, (completed_laps, fields) in enumerate(steps):
+        values = {"lap_time_counts": True, **fields}
+        vehicle = dataclasses.replace(base.player.vehicle, completed_laps=completed_laps, **values)
+        session = dataclasses.replace(base.session, elapsed_s=float(second), session_type=kind)
+        player = dataclasses.replace(base.player, vehicle=vehicle)
+        tracker.update(dataclasses.replace(base, vehicles=(vehicle,), session=session, player=player))
+    return tracker.in_progress()
+
+
+def test_lap_in_progress_from_the_line_is_a_lap_until_the_game_stops_timing_it() -> None:
+    """A lap from the line is a lap; while the game is not timing it, it is an invalid lap, and a lap again when the
+    game lets it go; a source that does not say never gives an invalid lap."""
+    assert _in_progress((0, {}), (1, {})) == LAP
+    assert _in_progress((0, {}), (1, {}), (1, {"lap_time_counts": False})) == INVALID_LAP
+    assert _in_progress((0, {}), (1, {}), (1, {"lap_time_counts": False}), (1, {})) == LAP
+    assert _in_progress((0, {}), (1, {"lap_time_counts": None})) == LAP
+
+
+def test_lap_in_progress_after_the_pit_exit_is_an_out_lap_whatever_the_flag_says() -> None:
+    """Leaving the pits starts an out lap, which the game never times; from the grid of a race it is the first
+    lap."""
+    pits = {"in_pits": True, "lap_time_counts": False}
+    assert _in_progress((0, pits), (0, {})) == OUT_LAP
+    assert _in_progress((0, pits), (0, {"lap_time_counts": False})) == OUT_LAP
+    assert _in_progress((0, pits), (0, {}), race=True) == FIRST_LAP
+    assert _in_progress((3, pits), (3, {}), race=True) == OUT_LAP
+
+
+def test_no_lap_in_progress_in_the_pits_or_when_first_seen_mid_way() -> None:
+    """In the pits or the garage there is no lap; a lap the car was already on when first seen has no type."""
+    assert _in_progress() is None
+    assert _in_progress((0, {}), (0, {})) is None
+    assert _in_progress((0, {}), (1, {}), (1, {"in_pits": True})) is None
+    assert _in_progress((0, {}), (1, {}), (1, {"in_pits": True, "in_garage": True})) is None

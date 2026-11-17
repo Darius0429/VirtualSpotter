@@ -80,6 +80,21 @@ class TrackFlags:
 
 
 @dataclass(frozen=True)
+class PenaltyState:
+    """Track-limit count and penalties of the player as the game holds them; a value the source lacks is None.
+    track_limit_steps  int | None  steps collected (points x steps_per_point)
+    steps_per_point    int | None  steps that make one track-limit point
+    steps_per_penalty  int | None  steps at which the game gives a penalty
+    penalties          int | None  penalties outstanding
+    """
+
+    track_limit_steps: int | None
+    steps_per_point: int | None
+    steps_per_penalty: int | None
+    penalties: int | None
+
+
+@dataclass(frozen=True)
 class RaceSnapshot(Snapshot):
     """Snapshot extended with every car's resources, the flags and every car's last-lap sector times.
     resources  tuple[CarResources, ...]  cars with telemetry
@@ -88,6 +103,7 @@ class RaceSnapshot(Snapshot):
     time_remaining_s  float | None       s of session time left as the game counts it (mSessionTimeRemaining: the
                                          race length on the grid and the formation lap); None when the source has none
     tyres      tuple[CarTyres, ...]      cars with telemetry
+    penalties  PenaltyState | None       track limits and penalties of the player; None = the source has none
     """
 
     resources: tuple[CarResources, ...]
@@ -95,3 +111,4 @@ class RaceSnapshot(Snapshot):
     sectors: tuple[LapSectors, ...] = ()
     time_remaining_s: float | None = None
     tyres: tuple[CarTyres, ...] = ()
+    penalties: PenaltyState | None = None

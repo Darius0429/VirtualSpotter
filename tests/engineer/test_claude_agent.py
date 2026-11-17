@@ -95,7 +95,7 @@ def _tools(tmp_path: Path, driven: Run | None = None) -> StoreTools:
     """
     driven = driven or run(tmp_path)
     plotter = CornerPlotter(tmp_path, 60.0, 0.05, 0.05)
-    return StoreTools(driven.store, driven.tracker, plotter, 150.0)
+    return StoreTools(driven.store, driven.tracker, plotter, 150.0, lambda: None)
 
 
 @pytest.mark.parametrize(

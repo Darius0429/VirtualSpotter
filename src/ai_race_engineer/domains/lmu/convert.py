@@ -13,6 +13,7 @@ type Vect3 = LMUVect3 | rF2Vec3
 type Wheel = LMUWheel | rF2Wheel
 
 KELVIN: float = 273.15
+LAP_AND_TIME_COUNT: int = 2
 
 
 def session_state(info: ScoringInfo) -> SessionState:
@@ -65,6 +66,7 @@ def vehicle_state(scoring: VehicleScoring, motion: VehicleTelemetry | VehicleSco
         position_y_m=motion.mPos.y,
         heading_rad=_heading_rad(motion.mOri),
         speed_mps=_speed_mps(motion.mLocalVel),
+        lap_time_counts=scoring.mCountLapFlag == LAP_AND_TIME_COUNT,
     )
 
 

@@ -47,6 +47,7 @@ class StoreTools:
     _tracker   SegmentTracker    the track map and the latest snapshot
     _plotter   CornerPlotter     draws the corner plots
     _search_m  float             m before a corner in which a car's slowing point is looked for
+    _lap_type  Callable[[], str | None]  provisional type of the lap the player is driving; None when not known
     """
 
     def __init__(
@@ -55,18 +56,22 @@ class StoreTools:
         tracker: SegmentTracker,
         plotter: CornerPlotter,
         search_m: float,
+        lap_type: Callable[[], str | None],
     ) -> None:
         """Store the sources and the plotter.
         In:  store     SegmentStore
              tracker   SegmentTracker
              plotter   CornerPlotter
              search_m  float  m before a corner in which a car's slowing point is looked for
+             lap_type  Callable[[], str | None]  provisional type of the lap the player is driving; None when not
+                                                 known
         Out:           None
         """
         self._store: SegmentStore = store
         self._tracker: SegmentTracker = tracker
         self._plotter: CornerPlotter = plotter
         self._search_m: float = search_m
+        self._lap_type: Callable[[], str | None] = lap_type
 
     def lap_data(self, car: str, lap: str, part: str, against: str) -> dict[str, object]:
         """Times and time lost of any car on any lap, sector, corner or straight, from the list that is filled the
@@ -86,7 +91,9 @@ class StoreTools:
         real-life turn numbers or names; straights are "straight N" from the start/finish line. A corner made of
         two turns ("turn 9 and 10") is found by either number. "best" and "last" are timed laps; lap_type says
         what a numbered lap was: "lap", "first lap" (of a race, from the grid), "out lap", "in lap", "invalid lap"
-        (not timed by the game), "aborted lap" (jump to the garage) or "retired".
+        (flagged by the game for track limits and not timed), "aborted lap" (jump to the garage) or "retired". For
+        the lap in progress lap_type is what it is so far ("lap", "out lap", "first lap", or "invalid lap" while the
+        game is not timing it), or "in progress" when that is not known.
         In:  car      str  whose lap: empty = the driver; else a driver's name or part of it
              lap      str  "now" = the lap in progress (another car: its latest pass of each segment), "last" = the
                            last finished lap, "best" = the fastest lap, or a lap number as the driver counts it
@@ -107,7 +114,10 @@ class StoreTools:
         if mine is None:
             return UNAVAILABLE
         if mine.me and key in REFERENCES:
-            return _rounded(_against_reference(mine, part.strip().lower(), key))
+            latest = self._tracker.latest
+            driving = latest is not None and mine.lap == latest.player.vehicle.completed_laps + 1
+            provisional = self._lap_type() if driving else None
+            return _rounded(_against_reference(mine, part.strip().lower(), key, provisional))
         named = self._class_fastest() if key == FASTEST else ME if key in (ME, *REFERENCES) else against
         other = None if named is None else self._side(named, lap)
         if other is None or other.driver == mine.driver:
@@ -376,15 +386,17 @@ class StoreTools:
         return []
 
 
-def _against_reference(side: _Side, part: str, key: str) -> dict[str, object]:
+def _against_reference(side: _Side, part: str, key: str, provisional: str | None) -> dict[str, object]:
     """The player's lap, one sector or one segment against a reference lap, from the stored differences.
-    In:  side  _Side  the player's lap
-         part  str    "" | "sector N" | a segment name, lower case
-         key   str    "class" | "car" | "track"
-    Out:       dict[str, object]  see lap_data; {"available": False} when the part is not recorded
+    In:  side         _Side       the player's lap
+         part         str         "" | "sector N" | a segment name, lower case
+         key          str         "class" | "car" | "track"
+         provisional  str | None  type of the lap so far when it is the lap the player is driving; None when it is
+                                  another lap or the type is not known
+    Out:              dict[str, object]  see lap_data; {"available": False} when the part is not recorded
     """
     segments = [r for r in side.parts if r.kind == SEGMENT and _in_part(r.name.lower(), r.figures["sector"], part)]
-    kind = "in progress" if side.record is None else side.record.name
+    kind = (provisional or "in progress") if side.record is None else side.record.name
     head = {"car": ME, "lap": side.lap, "lap_type": kind, "in_progress": side.record is None, "against": key}
     if not segments:
         return UNAVAILABLE

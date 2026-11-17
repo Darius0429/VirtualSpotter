@@ -64,6 +64,7 @@ class VehicleState:
     position_y_m           float         m world height
     heading_rad            float         rad, forward = (sin h, cos h) in world (x, z)
     speed_mps              float         m/s
+    lap_time_counts        bool | None   the game is timing the lap in progress (None when the source does not say)
     """
 
     slot_id: int
@@ -92,6 +93,7 @@ class VehicleState:
     position_y_m: float
     heading_rad: float
     speed_mps: float
+    lap_time_counts: bool | None = None
 
 
 @dataclass(frozen=True)

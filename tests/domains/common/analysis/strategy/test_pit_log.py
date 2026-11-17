@@ -130,3 +130,13 @@ def test_visit_through_the_garage_gives_no_sample() -> None:
     _step(log, 60.0, _vehicle(0, True, 990.0, 0.0), 100.0, 1.0)
     assert _step(log, 70.0, _vehicle(0, False, 50.0), 100.0, 1.0) == ()
     assert len(_pass(log, 5)) == 1
+
+
+def test_jump_to_the_garage_and_out_through_the_pit_lane_gives_no_sample() -> None:
+    """A car that goes from the track straight to the garage and then leaves through the pit lane is not a measured
+    pass."""
+    log = PitStopLog(0.5)
+    _step(log, 0.0, _vehicle(0, False, 500.0))
+    _step(log, 1.0, _vehicle(0, True, 990.0, 0.0, in_garage=True))
+    _step(log, 60.0, _vehicle(0, True, 995.0), 100.0, 1.0)
+    assert _step(log, 70.0, _vehicle(0, False, 50.0), 100.0, 1.0) == ()

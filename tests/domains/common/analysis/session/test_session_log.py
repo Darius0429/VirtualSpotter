@@ -2,9 +2,11 @@ import dataclasses
 
 import pytest
 
+from ai_race_engineer.domains.common.analysis.corners.lap_types import LapEnd
 from ai_race_engineer.domains.common.analysis.field.field import CarEstimate
 from ai_race_engineer.domains.common.analysis.strategy.pit_time import PitStopSample
 from ai_race_engineer.domains.common.analysis.session.session_log import SessionLog
+from ai_race_engineer.domains.common.analysis.session.track_limits import TrackLimitStatus
 from ai_race_engineer.domains.common.data.race_snapshot import CarResources, LapSectors, RaceSnapshot, TrackFlags
 from ai_race_engineer.domains.common.data.snapshot import PlayerState, SessionState, SessionType, VehicleState
 
@@ -12,6 +14,7 @@ GREEN: int = 5
 YELLOW: int = 6
 OVER: int = 8
 ESTIMATES: dict[int, CarEstimate] = {0: CarEstimate(0, 100.0, 3.0, 0.04, 0.75, (100.0,))}
+LIMITS: TrackLimitStatus = TrackLimitStatus(0.25, 5.0, 0, ())
 
 
 def _snapshot(
@@ -74,13 +77,29 @@ def _snapshot(
     )
 
 
-def _log(samples: list[PitStopSample] | None = None) -> SessionLog:
-    """Session log reading a list of pit samples and fixed estimates.
-    In:  samples  list[PitStopSample] | None  the list the pit samples are read from (default: empty)
-    Out:          SessionLog
+def _log(
+    samples: list[PitStopSample] | None = None,
+    lap_ends: list[LapEnd] | None = None,
+    count_yellow_flags: bool = True,
+) -> SessionLog:
+    """Session log reading a list of pit samples, a list of lap ends, fixed estimates and fixed track limits.
+    In:  samples             list[PitStopSample] | None  the list the pit samples are read from (default: empty)
+         lap_ends            list[LapEnd] | None         the list the lap ends are read from (default: empty)
+         count_yellow_flags  bool                        the record gives the yellow-flag count
+    Out:                     SessionLog
     """
     stops = samples if samples is not None else []
-    return SessionLog(lambda: tuple(stops), lambda: ESTIMATES, lambda: (), 1, lambda: 1_000_000.0)
+    ends = lap_ends if lap_ends is not None else []
+    return SessionLog(
+        lambda: tuple(stops),
+        lambda: ESTIMATES,
+        lambda: (),
+        1,
+        lambda: 1_000_000.0,
+        lambda: tuple(ends),
+        lambda: LIMITS,
+        count_yellow_flags,
+    )
 
 
 def _two_laps(log: SessionLog) -> None:
@@ -151,6 +170,47 @@ def test_yellow_flags_are_counted_when_they_turn_yellow() -> None:
     log.update(_snapshot(3.0, sector_flags=(11, 1, 11)))
     log.update(_snapshot(4.0, sector_flags=(1, 1, 11)))
     assert log.record().yellow_flags == 3
+
+
+def test_yellow_flag_count_is_none_when_switched_off() -> None:
+    """A domain that does not count yellow flags gives none in the record."""
+    log = _log(count_yellow_flags=False)
+    log.update(_snapshot(0.0))
+    log.update(_snapshot(1.0, sector_flags=(1, 11, 11)))
+    assert log.record().yellow_flags is None
+
+
+def test_lap_type_comes_from_the_lap_ends() -> None:
+    """A lap is named as the player's lap end at the crossing names it; another car's lap end does not count, and
+    without one a timed lap is a lap and an untimed one has no type."""
+    ends: list[LapEnd] = []
+    log = _log(lap_ends=ends)
+    log.update(_snapshot(0.0))
+    crossing = _snapshot(100.0, 100.0, 1)
+    ends[:] = [LapEnd(crossing.vehicles[1], 1, "lap", 99.0), LapEnd(crossing.player.vehicle, 1, "out lap", 100.0)]
+    log.update(crossing)
+    crossing = _snapshot(204.0, 204.0, 2)
+    ends[:] = [LapEnd(crossing.player.vehicle, 2, "invalid lap", 104.0)]
+    log.update(crossing)
+    ends[:] = []
+    log.update(_snapshot(304.0, 304.0, 3, last_lap_s=100.0))
+    log.update(_snapshot(404.0, 404.0, 4))
+    assert [lap.lap_type for lap in log.record().laps] == ["out lap", "invalid lap", "lap", None]
+
+
+def test_crossing_in_the_pit_lane_gives_an_in_lap() -> None:
+    """A lap that ends at the line in the pit lane has no lap end there and is an in lap."""
+    log = _log()
+    log.update(_snapshot(0.0))
+    log.update(_snapshot(100.0, 100.0, 1, last_lap_s=100.0, in_pits=True))
+    assert log.record().laps[0].lap_type == "in lap"
+
+
+def test_record_carries_the_track_limits() -> None:
+    """The record gives the track limits and penalties as the source has them."""
+    log = _log()
+    log.update(_snapshot(0.0))
+    assert log.record().limits == LIMITS
 
 
 def test_pit_stop_gives_an_automatic_note() -> None:

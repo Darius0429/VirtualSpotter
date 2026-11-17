@@ -1,16 +1,25 @@
 import json
 import time
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 import pandas as pd
+import pyarrow.parquet as pq
 from numpy.typing import NDArray
 
 from ai_race_engineer.domains.lmu.convert import player_state, session_state, vehicle_state
-from ai_race_engineer.domains.lmu.race_convert import car_resources, car_tyres, lap_sectors, track_flags
+from ai_race_engineer.domains.lmu.race_convert import (
+    car_resources,
+    car_tyres,
+    lap_sectors,
+    penalty_state,
+    track_flags,
+)
 from ai_race_engineer.domains.common.data.race_snapshot import RaceSnapshot
 from ai_race_engineer.domains.common.data.race_source import RaceSource
+from ai_race_engineer.domains.common.data.snapshot import VehicleState
 from ai_race_engineer.domains.lmu.raw_row import RawRow
 
 type Table = dict[str, NDArray[Any]]
@@ -110,6 +119,9 @@ PLAYER_COLUMNS: tuple[str, ...] = (
     *(f"mWheels.mTemperature.{wheel}.{part}" for wheel in range(4) for part in range(3)),
     *(f"mWheels.{field}.{wheel}" for field in WHEEL_FIELDS for wheel in range(4)),
 )
+INFO_OPTIONAL: tuple[str, ...] = ("mTrackLimitsStepsPerPoint", "mTrackLimitsStepsPerPenalty")
+SCORING_OPTIONAL: tuple[str, ...] = ("mNumPenalties", "mCountLapFlag")
+PLAYER_OPTIONAL: tuple[str, ...] = ("mTrackLimitsSteps",)
 
 
 class ReplaySource(RaceSource):
@@ -145,14 +157,15 @@ class ReplaySource(RaceSource):
         self._start_s: float = time.monotonic()
 
     def open(self) -> None:
-        """Load the four tables and start the replay clock; a missing folder or table raises OSError.
+        """Load the four tables and start the replay clock; a missing folder or table raises OSError. The track-limit,
+        penalty and lap-flag columns are loaded when the dump has them (older dumps do not).
         In:  -
         Out: None
         """
-        self._info = _table(self._folder / "raw_scoring_info_5hz", INFO_COLUMNS)
-        self._scoring = _table(self._folder / "raw_cars_scoring_5hz", SCORING_COLUMNS)
-        self._player = _table(self._folder / "raw_player_telemetry_100hz", PLAYER_COLUMNS)
-        self._cars = _table(self._folder / "raw_cars_telemetry_50hz", CAR_COLUMNS)
+        self._info = _table(self._folder / "raw_scoring_info_5hz", INFO_COLUMNS, INFO_OPTIONAL)
+        self._scoring = _table(self._folder / "raw_cars_scoring_5hz", SCORING_COLUMNS, SCORING_OPTIONAL)
+        self._player = _table(self._folder / "raw_player_telemetry_100hz", PLAYER_COLUMNS, PLAYER_OPTIONAL)
+        self._cars = _table(self._folder / "raw_cars_telemetry_50hz", CAR_COLUMNS, ())
         rows = pd.Series(np.arange(len(self._cars["mID"]))).groupby(self._cars["mID"]).indices
         self._car_rows = {int(slot_id): (self._cars["poll_s"][index], index) for slot_id, index in rows.items()}
         self._first_poll_s = float(self._info["poll_s"][0])
@@ -161,7 +174,9 @@ class ReplaySource(RaceSource):
     def read(self) -> RaceSnapshot | None:
         """Snapshot of the latest recorded rows at or before the replay time, cars matched by slot id.
         In:  -
-        Out: RaceSnapshot | None  None before the first row, after the last, or without a player with telemetry
+        Out: RaceSnapshot | None  None before the first row, after the last, or without a player with telemetry;
+                                  penalties is None for a dump without the four track-limit and penalty columns, and
+                                  lap_time_counts of the cars for a dump without mCountLapFlag
         """
         now_s = self.time_s()
         info_row = _latest(self._info["poll_s"], now_s)
@@ -176,10 +191,17 @@ class ReplaySource(RaceSource):
         telem_by_id = self._car_telemetry(now_s)
         telem = RawRow(self._player, player_row)
         telem_by_id[telem.mID] = telem
-        vehicles = tuple(vehicle_state(s, telem_by_id.get(s.mID, s)) for s in entries)
+        vehicles = tuple(_vehicle(s, telem_by_id.get(s.mID, s)) for s in entries)
         player = next((v for v in vehicles if v.is_player), None)
         if player is None or player.slot_id != telem.mID:
             return None
+        mine = next(s for s in entries if s.mIsPlayer)
+        limits = (
+            info.mTrackLimitsStepsPerPoint,
+            info.mTrackLimitsStepsPerPenalty,
+            mine.mNumPenalties,
+            telem.mTrackLimitsSteps,
+        )
         return RaceSnapshot(
             session=session_state(info),
             player=player_state(
@@ -191,10 +213,11 @@ class ReplaySource(RaceSource):
                 for s in entries
                 if s.mID in telem_by_id
             ),
-            flags=track_flags(info, next(s for s in entries if s.mIsPlayer)),
+            flags=track_flags(info, mine),
             sectors=tuple(lap_sectors(s) for s in entries),
             time_remaining_s=info.mSessionTimeRemaining,
             tyres=tuple(car_tyres(s, telem_by_id[s.mID]) for s in entries if s.mID in telem_by_id),
+            penalties=None if None in limits else penalty_state(info, mine, telem),
         )
 
     def results_path(self) -> Path | None:
@@ -234,14 +257,29 @@ class ReplaySource(RaceSource):
         return telem_by_id
 
 
-def _table(folder: Path, columns: tuple[str, ...]) -> Table:
-    """Load the needed columns of one raw-dump table.
-    In:  folder   Path             folder of Parquet part files
-         columns  tuple[str, ...]  column names to load
-    Out:          Table            column name -> values, rows sorted by poll_s
+def _vehicle(scoring: RawRow, motion: RawRow) -> VehicleState:
+    """Vehicle state of one recorded car.
+    In:  scoring  RawRow  scoring row of the car
+         motion   RawRow  its telemetry row, or the scoring row when it has none
+    Out:          VehicleState  lap_time_counts None when the dump has no mCountLapFlag
     """
-    frame = pd.read_parquet(folder, columns=list(columns)).sort_values("poll_s", kind="stable")
-    return {name: frame[name].to_numpy() for name in columns}
+    vehicle = vehicle_state(scoring, motion)
+    return vehicle if scoring.mCountLapFlag is not None else replace(vehicle, lap_time_counts=None)
+
+
+def _table(folder: Path, columns: tuple[str, ...], optional: tuple[str, ...]) -> Table:
+    """Load the needed columns of one raw-dump table.
+    In:  folder    Path             folder of Parquet part files
+         columns   tuple[str, ...]  column names to load
+         optional  tuple[str, ...]  column names loaded when the table has them
+    Out:           Table            column name -> values, rows sorted by poll_s; an optional column the table
+                                    lacks is None in every row
+    """
+    recorded = pq.ParquetDataset(folder).schema.names
+    found = [name for name in optional if name in recorded]
+    frame = pd.read_parquet(folder, columns=[*columns, *found]).sort_values("poll_s", kind="stable")
+    table = {name: frame[name].to_numpy() for name in (*columns, *found)}
+    return table | {name: np.full(len(frame), None) for name in optional if name not in found}
 
 
 def _latest(poll_s: NDArray[np.float64], now_s: float) -> int:

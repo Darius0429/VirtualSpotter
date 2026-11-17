@@ -53,6 +53,8 @@ race:
     hard_magnitude: 500.0      # a hit of another car with no car near is kept from this magnitude
     near_m: 12.0               # another car within this distance is the one that was touched
     hold_s: 3.0                # further impacts of the same car within this time are the same contact
+  track_limits:                # track-limit offences the game counts for the player
+    apex_window_m: 20.0        # m either side of the apex that still reads "apex of"
   fuel_margin_laps: 0.2        # laps the fuel may be short of the energy before 'fuel runs out first'
   strategy_start_laps: 5       # laps the player completes before measured pace and usage replace the pre-race
                                # figures and before rival callouts start
@@ -191,6 +193,7 @@ history:
   class_top: 5                            # cars of the class listed in a summary (plus the player's neighbours)
   track_field: TrackCourse                # results-file field equal to the game's track name (TrackVenue is equal too)
   results_margin_s: 300.0                 # s a results file's start may differ from the start the engineer saw
+  count_yellow_flags: false               # sector-yellow counts are noise in LMU; a domain that wants them sets true
   timeline:
     resume_margin_s: 120.0     # s two session starts may differ and still be the same session (restart of the engineer)
     max_entries: 30            # entries the agent tool returns at most (newest kept)

@@ -4,7 +4,9 @@ import statistics
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
 
+from ai_race_engineer.domains.common.analysis.corners.lap_types import IN_LAP, INVALID_LAP, LAP
 from ai_race_engineer.domains.common.analysis.session.session_log import Note, PlayerLap, SessionRecord
+from ai_race_engineer.domains.common.analysis.session.track_limits import TrackLimitStatus
 from ai_race_engineer.domains.common.data.results import TRACK_FIELDS, ResultDriver, SessionResults
 
 type Sectors = tuple[float | None, float | None, float | None]
@@ -53,7 +55,8 @@ class PlayerSummary:
     theoretical_best_s    float | None  s, sum of the best sectors
     clean_pace_s          float | None  s/lap, median of the clean laps
     clean_laps            int
-    invalid_laps          int           laps the game gave no time for
+    invalid_laps          int | None    laps the game flagged for track limits and did not time; None from a
+                                        results file
     best_sectors_s        Sectors       s (S1, S2, S3)
     energy_per_lap        float | None  fraction/lap, mean over the clean laps
     fuel_per_energy       float | None  litres per 1 % energy over the clean laps
@@ -63,6 +66,8 @@ class PlayerSummary:
     penalties             tuple[str, ...]  the game's penalty messages
     track_limit_warnings  int | None    None until the results file exists
     lap_list              tuple[PlayerLap, ...]
+    limits                TrackLimitStatus | None  track-limit points, the penalty limit, penalties outstanding and
+                                        each offence; None from a results file or when the source has none
     """
 
     class_place: int
@@ -73,7 +78,7 @@ class PlayerSummary:
     theoretical_best_s: float | None
     clean_pace_s: float | None
     clean_laps: int
-    invalid_laps: int
+    invalid_laps: int | None
     best_sectors_s: Sectors
     energy_per_lap: float | None
     fuel_per_energy: float | None
@@ -83,6 +88,7 @@ class PlayerSummary:
     penalties: tuple[str, ...]
     track_limit_warnings: int | None
     lap_list: tuple[PlayerLap, ...]
+    limits: TrackLimitStatus | None = None
 
 
 @dataclass(frozen=True)
@@ -97,7 +103,8 @@ class SessionSummary:
     time_s        float  s session time the summary covers
     complete      bool   the session is over
     class_order   tuple[ClassEntry, ...]  the top of the class plus the player and its neighbours
-    yellow_flags  int | None              times a sector flag turned yellow; None from a results file
+    yellow_flags  int | None              times a sector flag turned yellow; None from a results file or when they
+                                          are not counted
     player        PlayerSummary
     notes         tuple[Note, ...]
     """
@@ -156,7 +163,7 @@ def summarise(record: SessionRecord, car: str, class_top: int) -> SessionSummary
             theoretical_best_s=None if None in sectors else sum(sectors),
             clean_pace_s=statistics.median(lap.lap_time_s for lap in clean) if clean else None,
             clean_laps=len(clean),
-            invalid_laps=sum(not lap.timed for lap in record.laps),
+            invalid_laps=sum(lap.lap_type == INVALID_LAP for lap in record.laps),
             best_sectors_s=sectors,
             energy_per_lap=energy,
             fuel_per_energy=statistics.fmean(lap.fuel_used_l for lap in with_fuel)
@@ -172,6 +179,7 @@ def summarise(record: SessionRecord, car: str, class_top: int) -> SessionSummary
             penalties=(),
             track_limit_warnings=None,
             lap_list=record.laps,
+            limits=record.limits,
         ),
         notes=record.notes,
     )
@@ -216,7 +224,7 @@ def summary_from_results(
             theoretical_best_s=None if None in sectors else sum(sectors),
             clean_pace_s=statistics.median(lap.lap_time_s for lap in clean) if clean else None,
             clean_laps=len(clean),
-            invalid_laps=sum(lap.lap_time_s is None for lap in player.lap_list),
+            invalid_laps=None,
             best_sectors_s=sectors,
             energy_per_lap=None,
             fuel_per_energy=None,
@@ -301,7 +309,7 @@ def _laps_of_results(driver: ResultDriver) -> tuple[PlayerLap, ...]:
     """The timed laps of a driver in a results file in the form of the engineer's own lap list.
     In:  driver  ResultDriver
     Out:         tuple[PlayerLap, ...]  laps with a time; an in-lap and the lap after it count as pitted, lap 1 as not
-                                        green; usage is unknown
+                                        green; usage is unknown; lap_type "in lap" for a lap into the pits, else "lap"
     """
     after_pit = {lap.num + 1 for lap in driver.lap_list if lap.is_pit}
     return tuple(
@@ -320,6 +328,7 @@ def _laps_of_results(driver: ResultDriver) -> tuple[PlayerLap, ...]:
             compound_rear=lap.compound_rear,
             pitted=lap.is_pit or lap.num in after_pit,
             green=lap.num > 1,
+            lap_type=IN_LAP if lap.is_pit else LAP,
         )
         for lap in driver.lap_list
         if lap.lap_time_s is not None

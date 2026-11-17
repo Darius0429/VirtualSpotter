@@ -1,5 +1,13 @@
+from pyLMUSharedMemory.lmu_data import LMUScoringInfo, LMUVehicleScoring, LMUVehicleTelemetry
+
 from ai_race_engineer.domains.lmu.convert import ScoringInfo, VehicleScoring, VehicleTelemetry
-from ai_race_engineer.domains.common.data.race_snapshot import CarResources, CarTyres, LapSectors, TrackFlags
+from ai_race_engineer.domains.common.data.race_snapshot import (
+    CarResources,
+    CarTyres,
+    LapSectors,
+    PenaltyState,
+    TrackFlags,
+)
 
 
 def car_resources(scoring: VehicleScoring, telem: VehicleTelemetry, energy_fraction: float | None) -> CarResources:
@@ -59,4 +67,19 @@ def car_tyres(scoring: VehicleScoring, telem: VehicleTelemetry) -> CarTyres:
         compound_front=telem.mFrontTireCompoundName.decode("utf-8", errors="replace").rstrip("\x00").strip(),
         compound_rear=telem.mRearTireCompoundName.decode("utf-8", errors="replace").rstrip("\x00").strip(),
         wear=(telem.mWheels[0].mWear, telem.mWheels[1].mWear, telem.mWheels[2].mWear, telem.mWheels[3].mWear),
+    )
+
+
+def penalty_state(info: LMUScoringInfo, scoring: LMUVehicleScoring, telem: LMUVehicleTelemetry) -> PenaltyState:
+    """Track-limit steps, the two limits and the outstanding penalties of the player.
+    In:  info     LMUScoringInfo       mTrackLimitsStepsPerPoint, mTrackLimitsStepsPerPenalty
+         scoring  LMUVehicleScoring    the player's entry: mNumPenalties
+         telem    LMUVehicleTelemetry  the player's telemetry: mTrackLimitsSteps
+    Out:          PenaltyState
+    """
+    return PenaltyState(
+        track_limit_steps=telem.mTrackLimitsSteps,
+        steps_per_point=info.mTrackLimitsStepsPerPoint,
+        steps_per_penalty=info.mTrackLimitsStepsPerPenalty,
+        penalties=scoring.mNumPenalties,
     )

@@ -4,7 +4,17 @@ import pandas as pd
 import pytest
 
 from ai_race_engineer.domains.lmu import replay
-from ai_race_engineer.domains.lmu.replay import CAR_COLUMNS, INFO_COLUMNS, PLAYER_COLUMNS, SCORING_COLUMNS, ReplaySource
+from ai_race_engineer.domains.common.data.race_snapshot import PenaltyState
+from ai_race_engineer.domains.lmu.replay import (
+    CAR_COLUMNS,
+    INFO_COLUMNS,
+    INFO_OPTIONAL,
+    PLAYER_COLUMNS,
+    PLAYER_OPTIONAL,
+    SCORING_COLUMNS,
+    SCORING_OPTIONAL,
+    ReplaySource,
+)
 
 TEXT_COLUMNS: tuple[str, ...] = (
     "mTrackName",
@@ -31,24 +41,52 @@ def _write(folder: Path, columns: tuple[str, ...], rows: list[dict[str, object]]
 
 @pytest.fixture
 def dump(tmp_path: Path) -> Path:
-    """Raw dump of 10 s at 1 Hz with the player (slot 0) and one car (slot 5) whose telemetry stops after 3 s.
+    """Raw dump of 10 s at 1 Hz with the player (slot 0) and one car (slot 5) whose telemetry stops after 3 s,
+    recorded without the track-limit, penalty and lap-flag columns.
     In:  tmp_path  Path
     Out:           Path  dump folder
     """
+    return _dump(tmp_path, (), (), ())
+
+
+def _dump(folder: Path, info: tuple[str, ...], scoring: tuple[str, ...], player: tuple[str, ...]) -> Path:
+    """Raw dump of 10 s at 1 Hz with the player (slot 0) and one car (slot 5) whose telemetry stops after 3 s. With
+    the optional columns: 4 steps per point, 20 per penalty, 3 steps, 1 penalty; the game times the player's lap
+    and not the other car's.
+    In:  folder   Path             dump folder
+         info     tuple[str, ...]  optional columns of the scoring info table
+         scoring  tuple[str, ...]  optional columns of the cars scoring table
+         player   tuple[str, ...]  optional columns of the player telemetry table
+    Out:          Path             dump folder
+    """
     times = [float(t) for t in range(11)]
-    _write(tmp_path / "raw_scoring_info_5hz", INFO_COLUMNS, [{"poll_s": t, "mSession": 10} for t in times])
+    limits = {"mTrackLimitsStepsPerPoint": 4, "mTrackLimitsStepsPerPenalty": 20, "mNumPenalties": 1}
     _write(
-        tmp_path / "raw_cars_scoring_5hz",
-        SCORING_COLUMNS,
-        [{"poll_s": t, "mID": slot_id, "mIsPlayer": slot_id == 0} for t in times for slot_id in (0, 5)],
+        folder / "raw_scoring_info_5hz",
+        (*INFO_COLUMNS, *info),
+        [{"poll_s": t, "mSession": 10, **{name: limits[name] for name in info}} for t in times],
     )
     _write(
-        tmp_path / "raw_player_telemetry_100hz", PLAYER_COLUMNS, [{"poll_s": t, "mID": 0, "mFuel": 50.0} for t in times]
+        folder / "raw_cars_scoring_5hz",
+        (*SCORING_COLUMNS, *scoring),
+        [
+            {
+                "poll_s": t,
+                "mID": slot_id,
+                "mIsPlayer": slot_id == 0,
+                **{name: {**limits, "mCountLapFlag": 2 if slot_id == 0 else 1}[name] for name in scoring},
+            }
+            for t in times
+            for slot_id in (0, 5)
+        ],
     )
     _write(
-        tmp_path / "raw_cars_telemetry_50hz", CAR_COLUMNS, [{"poll_s": t, "mID": 5, "mFuel": 40.0} for t in times[:4]]
+        folder / "raw_player_telemetry_100hz",
+        (*PLAYER_COLUMNS, *player),
+        [{"poll_s": t, "mID": 0, "mFuel": 50.0, **dict.fromkeys(player, 3)} for t in times],
     )
-    return tmp_path
+    _write(folder / "raw_cars_telemetry_50hz", CAR_COLUMNS, [{"poll_s": t, "mID": 5, "mFuel": 40.0} for t in times[:4]])
+    return folder
 
 
 def _read_at(source: ReplaySource, monkeypatch: pytest.MonkeyPatch, time_s: float) -> list[int]:
@@ -80,3 +118,41 @@ def test_no_snapshot_outside_the_recording(dump: Path, monkeypatch: pytest.Monke
     source.open()
     monkeypatch.setattr(replay.time, "monotonic", lambda: 10.5)
     assert source.read() is None
+
+
+def test_dump_without_the_new_columns_replays_without_penalties_and_lap_flag(
+    dump: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An older dump has no track limits, penalties or lap flag: the snapshot says so with None."""
+    monkeypatch.setattr(replay.time, "monotonic", lambda: 0.0)
+    source = ReplaySource(dump)
+    source.open()
+    snapshot = source.read()
+    assert snapshot.penalties is None
+    assert [vehicle.lap_time_counts for vehicle in snapshot.vehicles] == [None, None]
+    assert snapshot.player.vehicle.lap_time_counts is None
+
+
+def test_dump_with_the_new_columns_gives_the_penalty_state_and_the_lap_flag(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """With the columns recorded the snapshot carries the player's track limits and penalties, and every car says
+    whether the game is timing its lap."""
+    monkeypatch.setattr(replay.time, "monotonic", lambda: 0.0)
+    source = ReplaySource(_dump(tmp_path, INFO_OPTIONAL, SCORING_OPTIONAL, PLAYER_OPTIONAL))
+    source.open()
+    snapshot = source.read()
+    assert snapshot.penalties == PenaltyState(3, 4, 20, 1)
+    assert [vehicle.lap_time_counts for vehicle in snapshot.vehicles] == [True, False]
+
+
+def test_dump_with_only_some_penalty_columns_has_no_penalty_state(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Without all four track-limit and penalty columns there is no penalty state; the lap flag is still read."""
+    monkeypatch.setattr(replay.time, "monotonic", lambda: 0.0)
+    source = ReplaySource(_dump(tmp_path, INFO_OPTIONAL, SCORING_OPTIONAL, ()))
+    source.open()
+    snapshot = source.read()
+    assert snapshot.penalties is None
+    assert snapshot.player.vehicle.lap_time_counts is True

@@ -20,9 +20,9 @@ class LapEnd:
     lap      int           lap number as the car's driver counts it
     name     str           "lap" = from line to line with a time; "out lap" = from leaving the pits to the line;
                            "in lap" = from the line, or from leaving the pits, to entering the pits; "invalid lap" =
-                           from line to line without a time from the game; "aborted lap" = cut short by a jump to
-                           the garage; "retired" = the same in a race before the car has finished; "first lap" =
-                           the first lap of a race, from the grid to the line
+                           from line to line, flagged by the game for track limits and not timed; "aborted lap" =
+                           cut short by a jump to the garage; "retired" = the same in a race before the car has
+                           finished; "first lap" = the first lap of a race, from the grid to the line
     time_s   float         s; the game's lap time for "lap" and "first lap", else the session time it took
     """
 
@@ -46,14 +46,18 @@ class _Run:
 
 
 class LapTypeTracker:
-    """Says what every lap of every car was: a timed lap, an out-lap, an in-lap, a lap the game did not time, or a
-    lap cut short by a jump to the garage (retiring, in a race). A lap a car is already on when it is first seen is
-    left out, and so is a jump to the garage before a race has started, after a session is over or of a car that
-    has finished.
+    """Says what every lap of every car was: a timed lap, an out-lap, an in-lap, a lap from line to line flagged by
+    the game for track limits and not timed, or a lap cut short by a jump to the garage (retiring, in a race). A lap
+    a car is already on when it is first seen is left out, and so is a jump to the garage before a race has started,
+    after a session is over or of a car that has finished.
     ended     tuple[LapEnd, ...]        the laps that ended at the last snapshot (replaced, never mutated)
     _runs     dict[int, _Run]           slot id -> the lap the car is driving on track
     _seen     dict[int, VehicleState]   slot id -> the car at the last snapshot
     _time_s   float                     s session time of the last snapshot
+    _race     bool                      the session of the last snapshot is a race
+    _player   int | None                slot id of the player at the last snapshot; None before the first
+    _counts   bool | None               the game is timing the player's lap in progress (None when the source does
+                                        not say)
     """
 
     def __init__(self) -> None:
@@ -65,6 +69,9 @@ class LapTypeTracker:
         self._runs: dict[int, _Run] = {}
         self._seen: dict[int, VehicleState] = {}
         self._time_s: float = 0.0
+        self._race: bool = False
+        self._player: int | None = None
+        self._counts: bool | None = None
 
     def update(self, snapshot: RaceSnapshot) -> None:
         """Feed one snapshot (source observer). A session clock that goes back starts again from nothing.
@@ -82,6 +89,22 @@ class LapTypeTracker:
         ended = [self._update_car(v, now_s, race, idle or v.slot_id in finished) for v in snapshot.vehicles]
         self.ended = tuple(end for end in ended if end is not None)
         self._seen = {vehicle.slot_id: vehicle for vehicle in snapshot.vehicles}
+        self._race, player = race, snapshot.player.vehicle
+        self._player, self._counts = player.slot_id, player.lap_time_counts
+
+    def in_progress(self) -> str | None:
+        """Provisional type of the lap the player is driving.
+        In:  -
+        Out: str | None  "out lap" (left the pits) | "first lap" (race lap 1 from the grid) | "invalid lap" (a lap from
+                         the line the game is not timing) | "lap"; None in the pits or garage, or when the lap was not
+                         seen from its start
+        """
+        run = self._runs.get(self._player)
+        if run is None:
+            return None
+        if run.out:
+            return FIRST_LAP if self._race and run.lap == 1 else OUT_LAP
+        return INVALID_LAP if self._counts is False else LAP
 
     def _update_car(self, vehicle: VehicleState, now_s: float, race: bool, finished: bool) -> LapEnd | None:
         """Feed one car's state.

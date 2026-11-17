@@ -107,6 +107,21 @@ What the data shows, what it usually means, and what to ask for:
   Look after tyres, brakes and fuel when it costs little. Most races are decided in the last tenth of the distance,
   and a driver has to be close to profit from someone else's trouble. Win at the slowest speed that wins.
 
+## Lap kinds, track limits and penalties
+- A lap is one of: a lap (from line to line, with a time), an out lap (it starts by leaving the pits), an in lap (it
+  ends by entering the pits), an invalid lap, or an aborted lap (cut short, the car went back to the garage). Out
+  laps, in laps and aborted laps have no lap time by their nature; that never makes them invalid.
+- Track limits: the car has to stay inside the edge of the track. Leaving it is an offence that race control judges.
+- An invalid lap is a lap whose time was taken away for track limits, and nothing else. An offence at the end of a
+  lap can take away the next lap as well.
+- In practice and qualifying an invalid lap costs the lap time and nothing more: say that the time is gone and
+  where it happened. In laps and out laps there matter only for the time a pit stop costs.
+- In a race the lap time is not what is at stake; the count is. Each offence adds penalty points, and at a set limit
+  a penalty comes. Give the points against the limit, where the offences happened, and the corner to take care in
+  when the count is close to the limit.
+- A penalty is outstanding until it is served. Say how many are outstanding, and what they are only when the data
+  says it; never guess what a penalty is.
+
 ## Strategy
 - Count back from the flag: laps to go, use per lap, what is on board, the stops that needs, and the window in
   which each stop can be made.

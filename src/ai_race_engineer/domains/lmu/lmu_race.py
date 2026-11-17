@@ -1,7 +1,13 @@
 from pathlib import Path
 
 from ai_race_engineer.domains.lmu.lmu import LMUSource
-from ai_race_engineer.domains.lmu.race_convert import car_resources, car_tyres, lap_sectors, track_flags
+from ai_race_engineer.domains.lmu.race_convert import (
+    car_resources,
+    car_tyres,
+    lap_sectors,
+    penalty_state,
+    track_flags,
+)
 from ai_race_engineer.domains.common.data.race_snapshot import RaceSnapshot
 from ai_race_engineer.domains.common.data.race_source import RaceSource
 
@@ -20,6 +26,7 @@ class LMURaceSource(LMUSource, RaceSource):
         scoring, telemetry = self._mmap.data.scoring, self._mmap.data.telemetry
         telem_by_id = {t.mID: t for t in telemetry.telemInfo[: telemetry.activeVehicles]}
         entries = scoring.vehScoringInfo[: scoring.scoringInfo.mNumVehicles]
+        player = next(s for s in entries if s.mIsPlayer)
         return RaceSnapshot(
             session=snapshot.session,
             player=snapshot.player,
@@ -29,10 +36,11 @@ class LMURaceSource(LMUSource, RaceSource):
                 for s in entries
                 if s.mID in telem_by_id
             ),
-            flags=track_flags(scoring.scoringInfo, next(s for s in entries if s.mIsPlayer)),
+            flags=track_flags(scoring.scoringInfo, player),
             sectors=tuple(lap_sectors(s) for s in entries),
             time_remaining_s=scoring.scoringInfo.mSessionTimeRemaining,
             tyres=tuple(car_tyres(s, telem_by_id[s.mID]) for s in entries if s.mID in telem_by_id),
+            penalties=penalty_state(scoring.scoringInfo, player, telem_by_id[player.mID]),
         )
 
     def results_path(self) -> Path | None:
