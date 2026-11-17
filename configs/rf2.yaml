@@ -26,9 +26,3 @@ callouts:
     clear_hold_s: 0.6            # a side must be empty this long before "clear"
     repeat_suppress_s: 2.0       # min time from a side's "car X" to its "clear" (only delays clears)
     min_speed_mps: 8.0           # spotter silent (and reset) below this player speed or in pits
-recorder:
-  root: data/raw/sessions      # one folder per recorded session
-  poll_hz: 200                 # shared-memory polls per second (100 Hz player telemetry ticks must not be missed)
-  flush_s: 1.0                 # seconds between batch writes to disk
-  part_s: 300                  # seconds per Parquet part file (a hard kill loses at most the open part)
-  h5_root: data/raw/telemetry  # old TinyPedal telemetry.h5 folders

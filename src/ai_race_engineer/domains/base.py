@@ -1,9 +1,9 @@
 import logging
+import math
 import os
 import queue
 import sys
 import threading
-import time
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Mapping
 from contextlib import ExitStack
@@ -54,6 +54,8 @@ from ai_race_engineer.domains.common.data.session_clock import SessionClock
 from ai_race_engineer.domains.common.recording.health_log import HealthLog
 from ai_race_engineer.domains.common.recording.keep_running import keep_running
 from ai_race_engineer.domains.common.recording.log_handler import RunLogHandler, log_thread_errors
+from ai_race_engineer.domains.common.recording.recorded_questions import RecordedQuestions
+from ai_race_engineer.domains.common.recording.run_folder import RunFolder
 from ai_race_engineer.domains.common.recording.run_info import run_info
 from ai_race_engineer.domains.common.recording.run_log import RunLog
 from ai_race_engineer.domains.common.recording.state_log import StateLog
@@ -135,6 +137,11 @@ class Domain(ABC):
     stores, tools and voice around a race source, with hooks for what only one game has.
     run_log           RunLog                                 debug log of the run
     _config           Mapping[str, object]                   the domain's YAML
+    _run              RunFolder                              folder of everything this run writes; shared with a
+                                                             recorder that is running
+    _replay           Path | None                            the recording that is replayed; None = live
+    _ask_recorded     bool                                   in a replay, ask the questions of the recorded run again
+    _now_unix         Callable[[], float]                    s unix time (of the recording in a replay)
     _stopping         threading.Event                        set when the program shuts down
     _callouts         queue.Queue[Callout]                   everything waiting to be spoken
     _health           HealthLog                              timing health; its timer wraps a subclass's reads too
@@ -173,7 +180,7 @@ class Domain(ABC):
         time_scale: float,
         log: bool,
         replay: Path | None,
-        recorded_as: str,
+        questions: bool,
     ) -> None:
         """Build the shared pipeline around a source.
         In:  config       Mapping[str, object]  the domain's YAML
@@ -182,7 +189,7 @@ class Domain(ABC):
              time_scale   float                 replay s per wall s; 1.0 live
              log          bool                  write the run log
              replay       Path | None           raw-dump folder that is replayed, stored in the run log; None = live
-             recorded_as  str                   name of the raw recording made at the same time, stored in the run log
+             questions    bool                  in a replay, ask the questions of the recorded run again; ignored live
         Out:              None
         """
         strat_cfg, race_cfg, speech_cfg = config["analysis"], config["race"], config["speech"]
@@ -190,8 +197,13 @@ class Domain(ABC):
         pit_cfg, prior_cfg = race_cfg["pit"], race_cfg["priors"]
         track_table = track_infos(yaml.safe_load(Path(config["tracks"]).read_text()))
         clock = SessionClock()
-        self.run_log: RunLog = RunLog(Path(log_cfg["root"]), log_cfg["enabled"] and log, clock.time_s)
-        self.run_log.write("run", run_info(sys.argv, {"domain": config}, replay, time_scale, recorded_as))
+        run = RunFolder(Path(config["runs"]), "engineer", None if replay else "recorder")
+        self._run: RunFolder = run
+        self._replay: Path | None = replay
+        self._ask_recorded: bool = questions
+        self._now_unix: Callable[[], float] = now_unix
+        self.run_log: RunLog = RunLog(run.path / "engineer", log_cfg["enabled"] and log, clock.time_s)
+        self.run_log.write("run", run_info(sys.argv, {"domain": config}, replay, time_scale))
         logging.getLogger().addHandler(RunLogHandler(self.run_log, log_cfg["level"]))
         log_thread_errors()
         self._config: Mapping[str, object] = config
@@ -288,7 +300,7 @@ class Domain(ABC):
         rival_lines = RivalLineTracker()
         live_segments = LiveSegmentTracker(lambda: segments.segments)
         lap_types = LapTypeTracker()
-        segment_store = SegmentStore(Path(strat_cfg["segment_store"]) / time.strftime("%Y%m%d_%H%M%S.sqlite"))
+        segment_store = SegmentStore(run.path / "segments.sqlite")
         self._segment_store: SegmentStore = segment_store
         segment_recorder = SegmentRecorder(
             segments,
@@ -305,7 +317,7 @@ class Domain(ABC):
             segment_store,
             segments,
             CornerPlotter(
-                Path(strat_cfg["corner_plots"]),
+                run.path / "plots",
                 seg_cfg["plot_margin_m"],
                 seg_cfg["card"]["brake_on"],
                 seg_cfg["card"]["throttle_on"],
@@ -434,12 +446,13 @@ class Domain(ABC):
 
     def listen(self) -> None:
         """Open the driver's input: the button, the microphone and the speech-to-text engine of the config, or typed
-        questions when a device or model is missing. Call once, in the main thread, before the first ask; an input
-        that cannot be set up at all raises here, at start-up.
+        questions when a device or model is missing; in a replay with questions, the questions of the recorded run.
+        Call once, in the main thread, before the first ask; an input that cannot be set up at all raises here, at
+        start-up.
         In:  -
         Out: None
         """
-        self._questions: Callable[[], str] = self._question_source()
+        self._questions: Callable[[], str] = self._recorded_questions() or self._question_source()
 
     def ask(self) -> str:
         """The driver's next question; blocks until there is one (call listen first). The race state at the question
@@ -504,6 +517,7 @@ class Domain(ABC):
             self._config["source"]["poll_hz"],
         )
         with ExitStack() as opened:
+            opened.enter_context(self._run)
             opened.enter_context(self.run_log)
             opened.enter_context(self._segment_store)
             opened.enter_context(feed)
@@ -516,7 +530,8 @@ class Domain(ABC):
     def __exit__(
         self, exc_type: type[BaseException] | None, exc: BaseException | None, traceback: TracebackType | None
     ) -> None:
-        """Stop the threads, write what is queued and close the source, the stores and the run log.
+        """Stop the threads, write what is queued, close the source, the stores and the run log and release the
+        run folder.
         In:  exc_type   type[BaseException] | None
              exc        BaseException | None
              traceback  TracebackType | None
@@ -574,6 +589,13 @@ class Domain(ABC):
         garage = self._garage()
         return None if garage is None else garage.fuel_ratio
 
+    def _recorded_wall_s(self) -> tuple[float, float]:
+        """The time the replayed recording covers; recorded questions outside it are not asked again.
+        In:  -
+        Out: tuple[float, float]  s unix time of its first and last row; all time = this domain does not know
+        """
+        return -math.inf, math.inf
+
     def _feed_happenings(self, snapshot: RaceSnapshot) -> None:
         """Feed one snapshot (source observer, runs after the lap history): queue the facts of a lap that was just
         added to the history, and the finish once the race is over for the player. Only queues.
@@ -591,6 +613,22 @@ class Domain(ABC):
             self._summed = True
             self._waiting.put(Happening(time_s, lap, FINISH, "", {"laps": laps}))
 
+    def _recorded_questions(self) -> Callable[[], str] | None:
+        """The questions of the recorded run a replay asks again, read from the engineer's log of the run the
+        recording lies in (<run>/game/<session> -> <run>/engineer/state.jsonl).
+        In:  -
+        Out: Callable[[], str] | None  blocks until the next question is due; None when live, when they are not
+                                       asked for, or when the recording has no such log (said in one line)
+        """
+        if self._replay is None or not self._ask_recorded:
+            return None
+        state_file = self._replay.resolve().parent.parent / "engineer" / "state.jsonl"
+        if not state_file.is_file():
+            print(f"no recorded questions found ({state_file}), ask your own")
+            return None
+        poll_s = 1 / self._config["devices"]["poll_hz"]
+        return RecordedQuestions(state_file, *self._recorded_wall_s(), self._now_unix, poll_s)
+
     def _question_source(self) -> Callable[[], str]:
         """Open the button, the microphone and the speech-to-text engine of the config.
         In:  -
@@ -605,7 +643,7 @@ class Domain(ABC):
                 LoggedSpeechToText(
                     RecordedSpeechToText(
                         STT[voice_cfg["stt"]["engine"]](voice_cfg, rate, self._context.driver_names),
-                        Path(voice_cfg["stt"]["recordings"]),
+                        self._run.path / "voice",
                         rate,
                     ),
                     self.run_log,

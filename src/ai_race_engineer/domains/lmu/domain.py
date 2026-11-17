@@ -1,3 +1,4 @@
+import math
 import time
 from collections.abc import Callable, Mapping
 from pathlib import Path
@@ -30,6 +31,7 @@ class LMUDomain(Domain):
     _garage_poller  GaragePoller       the game's garage figures, read in its own thread
     _energy_tools   EnergyTools
     _plan_briefing  PlanBriefing
+    _recorded_s     tuple[float, float]  s unix time of the first and last row of the recording; all time when live
     """
 
     def __init__(
@@ -38,14 +40,14 @@ class LMUDomain(Domain):
         recording: Path | None = None,
         speed: float = 1.0,
         log: bool = True,
-        recorded_as: str = "",
+        questions: bool = False,
     ) -> None:
         """Pick the live game or a recording and build the pipeline around it.
         In:  config       Mapping[str, object]  configs/lmu.yaml
              recording    Path | None           raw-dump folder to replay; None = live game
              speed        float                 replay s per wall s
              log          bool                  write the run log
-             recorded_as  str                   name of the raw recording made at the same time, stored in the run log
+             questions    bool                  in a replay, ask the questions of the recorded run again
         Out:              None
         """
         est_cfg, garage_cfg = config["source"]["pit_estimate"], config["source"]["garage"]
@@ -54,15 +56,18 @@ class LMUDomain(Domain):
             source: RaceSource = replay
             estimates: PitEstimateSource = ReplayPitEstimate(recording, replay.time_s)
             garage_source: GarageSource = ReplayGarage(recording, replay.time_s)
-            now_unix = ReplayWallClock(recording, replay.time_s).unix_s
+            wall_clock = ReplayWallClock(recording, replay.time_s)
+            now_unix = wall_clock.unix_s
+            self._recorded_s: tuple[float, float] = wall_clock.span_s
             time_scale = speed
         else:
             source = LMURaceSource()
             estimates = LMUPitEstimateSource(est_cfg["url"], est_cfg["timeout_s"])
             garage_source = LMUGarageSource(garage_cfg["url"], garage_cfg["timeout_s"])
             now_unix = time.time
+            self._recorded_s = (-math.inf, math.inf)
             time_scale = 1.0
-        super().__init__(config, source, now_unix, time_scale, log, recording, recorded_as)
+        super().__init__(config, source, now_unix, time_scale, log, recording, questions)
         self._poller: PitEstimatePoller = PitEstimatePoller(
             TimedPitEstimate(estimates, self._health.timed), est_cfg["period_s"] / time_scale
         )
@@ -111,6 +116,13 @@ class LMUDomain(Domain):
         Out: list[Callable[[], None]]
         """
         return [self._poller.run, self._garage_poller.run]
+
+    def _recorded_wall_s(self) -> tuple[float, float]:
+        """The time the replayed recording covers.
+        In:  -
+        Out: tuple[float, float]  s unix time of its first and last row
+        """
+        return self._recorded_s
 
     def _pit_estimate(self) -> PitEstimate | None:
         """The game's latest pit-stop estimate for the player (non-blocking).

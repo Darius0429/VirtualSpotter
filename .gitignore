@@ -193,6 +193,7 @@ CLAUDE.md
 
 # engineer run logs, session summaries and history: contain real driver names
 data/logs/
+data/runs/
 data/sessions/
 data/history/
 

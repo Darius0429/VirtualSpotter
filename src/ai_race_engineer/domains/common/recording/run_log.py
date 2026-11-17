@@ -16,9 +16,9 @@ MAX_ERROR_CHARS: int = 200
 
 
 class RunLog:
-    """Debug log of one process run: JSON lines per stream in data/logs/<YYYYmmdd_HHMMSS>/<stream>.jsonl. Writing is
-    non-blocking; one writer thread converts and stores the records.
-    _folder          Path                 folder of this run (created on the first write)
+    """Debug log of one process run: JSON lines per stream in <folder>/<stream>.jsonl. Writing is non-blocking; one
+    writer thread converts and stores the records.
+    _folder          Path                 folder of the streams (created on the first write)
     _enabled         bool                 False = write does nothing; set False when the writer thread ends
     _session_time_s  Callable[[], float]  s session time now
     _records         queue.Queue[tuple[str, dict[str, object]] | None]  stamped records waiting for the writer
@@ -26,14 +26,14 @@ class RunLog:
     _writer          threading.Thread     the writer thread
     """
 
-    def __init__(self, root: Path, enabled: bool, session_time_s: Callable[[], float]) -> None:
-        """Name the run folder after the start time and start the writer thread.
-        In:  root            Path                 folder that holds one folder per run
+    def __init__(self, folder: Path, enabled: bool, session_time_s: Callable[[], float]) -> None:
+        """Store the folder and start the writer thread.
+        In:  folder          Path                 folder the streams are written into, <run folder>/engineer
              enabled         bool                 False = nothing is written and no folder is made
              session_time_s  Callable[[], float]  s session time now (non-blocking)
         Out:                 None
         """
-        self._folder: Path = root / time.strftime("%Y%m%d_%H%M%S")
+        self._folder: Path = folder
         self._enabled: bool = enabled
         self._session_time_s: Callable[[], float] = session_time_s
         self._records: queue.Queue[tuple[str, dict[str, object]] | None] = queue.Queue()

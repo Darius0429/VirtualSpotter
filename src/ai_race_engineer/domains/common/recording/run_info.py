@@ -18,7 +18,7 @@ GIT_TIMEOUT_S: float = 5.0
 
 
 def run_info(
-    argv: Sequence[str], configs: Mapping[str, object], replay: Path | None, speed: float, recording: str
+    argv: Sequence[str], configs: Mapping[str, object], replay: Path | None, speed: float
 ) -> dict[str, object]:
     """What is needed to reproduce a run: command line, configuration, code version and data source. API keys are
     never read.
@@ -26,9 +26,7 @@ def run_info(
          configs    Mapping[str, object]  config file path -> its loaded content
          replay     Path | None           raw-dump folder that is replayed; None = live game
          speed      float                 replay s per wall s
-         recording  str                   name of the raw recording made at the same time ("" = none)
-    Out:            dict[str, object]     argv, configs, git_commit, git_dirty, python, packages, source, replay, speed,
-                                          recording
+    Out:            dict[str, object]     argv, configs, git_commit, git_dirty, python, packages, source, replay, speed
     """
     status = _git("status", "--porcelain")
     return {
@@ -41,7 +39,6 @@ def run_info(
         "source": "live" if replay is None else "replay",
         "replay": replay,
         "speed": speed,
-        "recording": recording,
     }
 
 

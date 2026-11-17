@@ -1,3 +1,4 @@
+runs: data/runs   # one folder per run: game recording, engineer log, voice clips, store, plots
 source:
   poll_hz: 20
   pit_estimate:
@@ -13,8 +14,6 @@ analysis:
   track_maps: configs/track_maps   # one JSON file per track layout with its corners and straights; the stored ones carry
                                    # the real-life turn numbers or names, an unknown track is learned from the first lap
   best_laps: data/processed/best_laps   # the driver's best lap per track and car, kept across sessions
-  corner_plots: data/plots     # folder of the corner plots the agent draws
-  segment_store: data/segments # one SQLite file per run: every segment, sector and lap of every car as it finished
   segments:
     keep_laps: 30              # analysed laps kept, with their telemetry
     map:                       # how an unknown track is split into corners and straights
@@ -156,7 +155,6 @@ devices:
     device: null               # null = Windows default input; else index or name from scripts/setup_voice.py microphones
   stt:
     engine: whisper            # whisper (local, free) | elevenlabs (API) | vosk (local, weakest)
-    recordings: data/voice     # every question is kept here as a WAV file named after what was heard
   elevenlabs_stt:
     model: scribe_v2
     language: en
@@ -207,15 +205,43 @@ history:
       rival_hold_s: 30.0         # session s a car must be in, or out of, the rival set before that is recorded
 log:
   enabled: true                # one switch; --no-log overrides it
-  root: data/logs              # one folder per process start
   level: INFO                  # stdlib logging level written to log.jsonl
   state_period_s: 5.0          # session s between RaceState snapshots
   health_period_s: 10.0        # s between timing-health records
   restart_wait_s: 1.0          # s before a failed thread loop is started again
-recorder:
-  root: data/raw/sessions      # one folder per recorded session
-  poll_hz: 200                 # shared-memory polls per second (100 Hz player telemetry ticks must not be missed)
-  flush_s: 1.0                 # seconds between batch writes to disk
-  part_s: 300                  # seconds per Parquet part file (a hard kill loses at most the open part)
-  h5_root: data/raw/telemetry  # old TinyPedal telemetry.h5 folders
+recorder:                      # scripts/record.py: everything the game publishes, one folder per session
+  poll_hz: 250                 # shared-memory polls per second (100 Hz player telemetry ticks must not be missed)
+  flush_s: 1.0                 # s between hand-overs of the buffered rows to the writer process
+  part_s: 300                  # s per Parquet part file (a hard kill loses at most the open part)
+  stale_s: 2.0                 # s a car's telemetry clock may differ from the session clock; rows further off are
+                               # left over from the session before and dropped
+  finish_grace_s: 5.0          # s recorded after the player has finished (finish status no longer 0)
+  restart_back_s: 1.0          # s the session clock must jump back to count as a restart of the session
+  progress_s: 30.0             # s between two progress lines on the console
+  rest:                        # the game's local REST API; each changed answer is one line in rest/<name>.jsonl
+    url: http://localhost:6397
+    timeout_s: 1.0
+    pages:                     # period_s = s between two reads; reading faster makes the game stutter
+                               # pits_only = read once per session, then only while the player is in the pits
+                               # the names are the file names the replay reads; do not rename them
+      garage_setup:
+        path: /rest/garage/getPlayerGarageData
+        period_s: 5.0
+        pits_only: true
+      repair_and_refuel:       # brake wear, damage, virtual energy
+        path: /rest/garage/UIScreen/RepairAndRefuel
+        period_s: 5.0
+        pits_only: false
+      pitstop_estimate:
+        path: /rest/strategy/pitstop-estimate
+        period_s: 5.0
+        pits_only: false
+      weather_forecast:
+        path: /rest/sessions/weather
+        period_s: 120.0
+        pits_only: false
+      session_settings:
+        path: /rest/sessions
+        period_s: 120.0
+        pits_only: false
 tracks: configs/tracks.yaml

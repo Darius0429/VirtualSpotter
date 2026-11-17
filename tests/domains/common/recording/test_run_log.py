@@ -6,27 +6,28 @@ from ai_race_engineer.domains.common.recording.run_log import RunLog
 from ai_race_engineer.domains.common.data.snapshot import SessionType
 
 
-def _lines(root: Path, stream: str) -> list[dict[str, object]]:
-    """Records of one stream of the only run folder.
-    In:  root    Path  log root
+def _lines(folder: Path, stream: str) -> list[dict[str, object]]:
+    """Records of one stream of a log folder.
+    In:  folder  Path  folder the log was given
          stream  str   file name without extension
     Out:         list[dict[str, object]]
     """
-    (folder,) = root.iterdir()
     return [json.loads(line) for line in (folder / f"{stream}.jsonl").read_text(encoding="utf-8").splitlines()]
 
 
 def test_records_are_stamped_and_written_to_their_stream(tmp_path: Path) -> None:
-    """Each record is one JSON line in its stream's file, with a sequence number, wall time and session time."""
-    log = RunLog(tmp_path, True, lambda: 12.5)
+    """Each record is one JSON line in its stream's file in the given folder (created by the log), with a sequence
+    number, wall time and session time."""
+    folder = tmp_path / "run" / "engineer"
+    log = RunLog(folder, True, lambda: 12.5)
     log.write("callouts", {"event": "emitted"})
     log.write("health", {"gap_s": 0.05})
     log.write("callouts", {"event": "spoken"})
     log.close()
-    callouts = _lines(tmp_path, "callouts")
+    callouts = _lines(folder, "callouts")
     assert [(r["seq"], r["event"], r["session_s"]) for r in callouts] == [(0, "emitted", 12.5), (2, "spoken", 12.5)]
     assert all(r["wall_s"] > 0 for r in callouts)
-    assert _lines(tmp_path, "health")[0]["gap_s"] == 0.05
+    assert _lines(folder, "health")[0]["gap_s"] == 0.05
     assert log.queue_size() == 0
 
 
